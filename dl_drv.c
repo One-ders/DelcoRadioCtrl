@@ -240,34 +240,28 @@ static int dl_timeout(struct device_handle *dh, int ev, void *dum) {
 	if (up) {
 		up=0;
 		clk_up(dld);
-		if (current_bit_no<0) {
-			strobe=1;
-			strobe_on(dld);
+		if (current_bit_no>=0) {
+			data_out(dld, current_bit_val?1:0);
 		}
+		current_bit_no--;
+		if (current_bit_no>=0) {
+			current_bit_val=barr[current_bit_no/8]&(1<<(current_bit_no%8));
+		}
+
 	} else {
 		up=1;
 		clk_down(dld);
 		if (current_bit_no<0) {
-			if (strobe) {
+			if (!strobe) {
+				strobe=1;
+				strobe_on(dld);
+			} else if (strobe) {
 				strobe=0;
 				strobe_off(dld);
 				led_off(dld->led_dh);
 				busy=0;
 				return 0;
-#if 0
-			} else {
-				strobe=1;
-				strobe_on(dld);
-				timerdrv->ops->control(dld->timer_dh,HR_TIMER_SET,&clkHalfPeriod,sizeof(clkHalfPeriod));
-				return 0;
-#endif
 			}
-			return 0;
-		}
-		data_out(dld, current_bit_val?1:0);
-		current_bit_no--;
-		if (current_bit_no>=0) {
-			current_bit_val=barr[current_bit_no/8]&(1<<(current_bit_no%8));
 		}
 	}
 	timerdrv->ops->control(dld->timer_dh,HR_TIMER_SET,&clkHalfPeriod,sizeof(clkHalfPeriod));
