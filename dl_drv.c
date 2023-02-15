@@ -204,12 +204,13 @@ static int data_out(struct dl_data *dld, int val) {
 	return 0;
 }
 
-int fnc_vf;
+static int fnc_vf;
 static int strobe_on(struct dl_data *dld) {
-	int on=1;
 	if (fnc_vf) {
+		int on=1;
 		pindrv->ops->control(dld->vf_strobe_pin_dh,GPIO_SET_PIN,&on,sizeof(on));
 	} else {
+		int on=0;
 		pindrv->ops->control(dld->syn_strobe_pin_dh,GPIO_SET_PIN,&on,sizeof(on));
 	}
 //	sys_printf("strobe on\n");
@@ -217,10 +218,11 @@ static int strobe_on(struct dl_data *dld) {
 }
 
 static int strobe_off(struct dl_data *dld) {
-	int off=0;
 	if (fnc_vf) {
+		int off=0;
 		pindrv->ops->control(dld->vf_strobe_pin_dh,GPIO_SET_PIN,&off,sizeof(off));
 	} else {
+		int off=1;
 		pindrv->ops->control(dld->syn_strobe_pin_dh,GPIO_SET_PIN,&off,sizeof(off));
 	}
 //	sys_printf("strobe off\n");
@@ -282,6 +284,11 @@ static void put_out_bit(struct dl_data *dld) {
 
 static int write_bits(struct dl_data *dld, unsigned char *buf, int size) {
 	int bits;
+
+#if 0
+	sys_printf("write bits, array is %d bytes, first byte is %02x\n",
+					size, buf[0]);
+#endif
 
 	busy=1;
 	bits=buf[0]&0x7F;
@@ -351,7 +358,10 @@ static int dl_drv_control(struct device_handle *dh, int cmd, void *arg, int size
 		case WR_CHAR: {
 			unsigned char *buf=(unsigned char *)arg;
 
-			if (busy) return -1;
+			if (busy) {
+				sys_printf("write to busy drv\n");
+				return -1;
+			}
 			return write_bits(dld,buf,size);
 
 			break;

@@ -40,7 +40,10 @@
 #include <ctype.h>
 
 #include "dl_drv.h"
-#include "tuner_wheel.h"
+#include "controls_drv.h"
+#include "tstats_drv.h"
+#include "asynchio.h"
+#include "timer.h"
 
 static int bub(int argc, char **argv, struct Env *env);
 
@@ -55,6 +58,7 @@ static struct cmd_node cmn = {
 	cmds,
 };
 
+#if 0
 static int udelay(unsigned int usec) {
 	volatile unsigned int count=0;
 	volatile unsigned int utime=(120*usec/7);
@@ -64,6 +68,7 @@ static int udelay(unsigned int usec) {
 
 	return 0;
 }
+#endif
 
 static char *toIhex(char *buf, int address, int len, unsigned char *data) {
 	unsigned int ck=0;
@@ -201,6 +206,7 @@ static int parse_ihex(char *line, int size, int offset, int io_fd) {
 
 static unsigned char buf[8];
 static int myfd=-1;
+static int conf_fd;
 
 static int bub(int argc, char **argv, struct Env *env) {
 	int i;
@@ -248,6 +254,31 @@ static int dump_hex(unsigned char *buf, int len) {
 
 }
 
+struct FM_Freq {
+	unsigned char Mhz;
+	unsigned char Hkhz;
+};
+
+// Radio operations data
+static int tstats_fd;
+static int set		= 0;
+static int stereo	= 0;
+#define SEEK_DIR_DOWN 0
+#define SEEK_DIR_UP   1
+static int seek_dir;
+static int seek_running;
+static int pkey;
+static int show_pkey;
+static struct FM_Freq active = {87,7};
+static struct FM_Freq presets[4] = {
+		{87,7},
+		{87,7},
+		{87,7},
+		{87,7}
+};
+
+
+
 static unsigned int encode_digit(int val) {
 	switch (val) {
 		case 0:
@@ -276,50 +307,89 @@ static unsigned int encode_digit(int val) {
 	return 0;
 }
 
-static int update_vfd_fm_freq(int mhz, int hkhz) {
+static int update_vfd() {
 	unsigned char buf[6];
-	int fc;
-	int prescaler;
-	int m;
-	int test;
-	int val;
 	int rc;
 
 	memset(buf,0,sizeof(buf));
 
-	buf[0]=0x80|0x22;
+	if (show_pkey) {
+		buf[0]=0x80|0x22;
+		buf[3]= 0x73;    // P
+		buf[4]= encode_digit(pkey+1);
+	} else {
+		buf[0]=0x80|0x22;
 
-	buf[1]=0x21;
+		buf[1]=0;
 
-	if (mhz>99) {
-		buf[1]|=0x02;
+		if (set) {
+			buf[1]|=0x80;
+		}
+
+		if (stereo) {
+			buf[1]|=0x04;
+		}
+
+		buf[1]|=0x21;   // FM and '.'
+
+		if (active.Mhz>99) {
+			buf[1]|=0x02;  // top 1 in 100.3
+		}
+
+		buf[2]=encode_digit((active.Mhz/10)%10);
+		buf[3]=encode_digit(active.Mhz%10);
+		buf[4]=encode_digit(active.Hkhz);
 	}
 
-	buf[2]=encode_digit((mhz/10)%10);
-	buf[3]=encode_digit(mhz%10);
-	buf[4]=encode_digit(hkhz);
+	rc=io_write(myfd, buf, sizeof(buf));
+//	printf("update vfd return %d\n",rc);
 
-	io_write(myfd, buf, sizeof(buf));
+	return 0;
+}
 
-	fc=(mhz*10)+hkhz;
+static int update_syn() {
+	unsigned char buf[6];
+	int fc;
+	int prescaler;
+	int m=0;
+	int test;
+	int val;
+	int rc;
+
+	fc=(active.Mhz*10)+active.Hkhz;
 	prescaler=(fc+4195)/8;
 	test=(fc+4195)-(prescaler*8);
 	switch(test) {
 		case 0:
 			m=0x0;
 			break;
+		case 1:
+			prescaler++;
+			m=0xE;
+			break;
 		case 2:
 			prescaler++;
 			m=0xC;
+			break;
+		case 3:
+			prescaler++;
+			m=0xA;
 			break;
 		case 4:
 			prescaler++;
 			m=0x8;
 			break;
+		case 5:
+			prescaler++;
+			m=0x6;
+			break;
 		case 6:
 			prescaler++;
 			m=0x4;
 			break;
+		case 7:
+			prescaler++;
+			m=0x2;
 	}
 
 	val=(prescaler<<4)|m;
@@ -332,62 +402,234 @@ static int update_vfd_fm_freq(int mhz, int hkhz) {
 	buf[3]=0x03;
 
 	rc=io_write(myfd, buf, 4);
+#if 0
 	printf("rc %d syn str %02x, %02x, %02x, %02x\n", rc, buf[0], buf[1], buf[2], buf[3]);
+#endif
 
 	return 0;
 }
 
-static int update_freq(int FM_Mhz, int FM_Hkhz) {
-	update_vfd_fm_freq(FM_Mhz, FM_Hkhz);
+static int update_freq() {
+	update_vfd();
+	update_syn();
+	return 0;
+}
+static void *set_timer;
+static int set_timeout(void *udat) { // timeout on set button
+	printf("set_timeout\n");
+	set_timer=0;
+	set=0;
+	update_vfd();
 	return 0;
 }
 
-
-static void tuner(void *dum) {
-	int fd_tuner_wheel=io_open(TW_DRV0);
-	int FM_Mhz = 87;
-	int FM_Hkhz = 7;
-
-	if (fd_tuner_wheel<0) {
-		printf("could not open tuner wheel\n");
-		return;
-	}
-
-	while(1) {
-		signed char b;
-		int rc;
-		rc=io_read(fd_tuner_wheel, &b, 1);
-		if (rc<0) {
-			printf("%t: got error\n");
-		} else {
-			if (b==1) {
-				if ((FM_Mhz>=107) &&
-					(FM_Hkhz>=9)) {
-					continue;
-				}
-				FM_Hkhz+=2;
-				if (FM_Hkhz>9) {
-					FM_Hkhz=1;
-					FM_Mhz++;
-				}
-				update_freq(FM_Mhz, FM_Hkhz);
-				printf("wheel ++, f=%d.%d\n", FM_Mhz, FM_Hkhz);
-			} else if (b==-1) {
-				if ((FM_Mhz<=87) &&
-					(FM_Hkhz<=7)) {
-					continue;
-				}
-				FM_Hkhz-=2;
-				if (FM_Hkhz<0) {
-					FM_Hkhz=9;
-					FM_Mhz--;
-				}
-				update_freq(FM_Mhz, FM_Hkhz);
-				printf("wheel --, f=%d.%d\n", FM_Mhz, FM_Hkhz);
-			} else {
-				printf("wheel shit val is %d\n", b);
+static int first;
+static int seek_timeout(void *udat) {
+	if (first) {
+		first=0;
+	} else {
+		int stopflag;
+		io_control(tstats_fd, GET_STOP_FLAG, &stopflag, sizeof(stopflag));
+//		printf("stopflag is %x\n", stopflag);
+		if (stopflag!=0) {
+			if (seek_running) {
+				seek_running=0;
+				timer_set_seek_cb(0,0);
+				return 0;
 			}
 		}
+	}
+	if (seek_dir==SEEK_DIR_DOWN) {
+		if ((active.Mhz<=87) &&
+			(active.Hkhz<=7)) {
+			active.Mhz=107;
+			active.Hkhz=9;
+		} else {
+			active.Hkhz-=1;
+			if (active.Hkhz>9) {
+				active.Hkhz=9;
+				active.Mhz--;
+			}
+		}
+	} else {
+		if ((active.Mhz>=107) &&
+			(active.Hkhz>=9)) {
+			active.Mhz=87;
+			active.Hkhz=7;
+		} else {
+			active.Hkhz+=1;
+			if (active.Hkhz>9) {
+				active.Hkhz=0;
+				active.Mhz++;
+			}
+		}
+	}
+	update_freq();
+	return 0;
+}
+
+static int push_preset(int button) {
+	if (set) {
+		int rc;
+		presets[button]=active;
+		timer_delete(set_timer);
+		set_timer=0;
+		set=0;
+		show_pkey=1;
+		pkey=button;
+		update_vfd();
+		rc=io_write(conf_fd,presets,sizeof(presets));
+		if (rc!=sizeof(presets)) {
+			printf("failed to store presets\n");
+		}
+	} else {
+		active=presets[button];
+		show_pkey=1;
+		pkey=button;
+		update_vfd();
+		update_syn();
+	}
+	return 0;
+}
+
+static int release_preset(int button) {
+	show_pkey=0;
+	update_vfd();
+	return 0;
+}
+
+
+
+static int tstats_event(int fd, int event, void *dum) {
+	int b;
+	int rc;
+
+	rc=io_read(fd, &b, 4);
+	if (rc<0) {
+		printf("%t: got error\n");
+	} else {
+//		printf("got tstats event %d\n",b);
+		if (b==EVENT_STEREO_ON) {
+			stereo=1;
+			update_vfd();
+		} else if (b==EVENT_STEREO_OFF) {
+			stereo=0;
+			update_vfd();
+#if 0
+		} else if (b==EVENT_STOP) {
+			printf("bub\n");
+			if (seek_running) {
+				seek_running=0;
+				timer_set_seek_cb(0,0);
+			}
+#endif
+		}
+	}
+	return 0;
+}
+
+static int controls_event(int fd, int event, void *dum) {
+	int b;
+	int rc;
+
+	rc=io_read(fd, &b, 4);
+	if (rc<0) {
+		printf("%t: got error\n");
+	} else {
+		if (b==EVENT_TUNE_UP) {
+			if ((active.Mhz>=107) &&
+				(active.Hkhz>=9)) {
+				return 0;
+			}
+			active.Hkhz+=1;
+			if (active.Hkhz>9) {
+				active.Hkhz=0;
+				active.Mhz++;
+			}
+			update_freq();
+			printf("wheel ++, f=%d.%d\n", active.Mhz, active.Hkhz);
+		} else if (b==EVENT_TUNE_DOWN) {
+			if ((active.Mhz<=87) &&
+				(active.Hkhz<=7)) {
+				return 0;
+			}
+			active.Hkhz-=1;
+			if (active.Hkhz<0) {
+				active.Hkhz=9;
+				active.Mhz--;
+			}
+			update_freq();
+			printf("wheel --, f=%d.%d\n", active.Mhz, active.Hkhz);
+		} else if (b==EVENT_SET) {
+			if (!set) {
+				set=1;
+				set_timer=timer_create(4,set_timeout,0);
+			} else {
+				set=0;
+				if (set_timer) {
+					timer_delete(set_timer);
+					set_timer=0;
+				}
+			}
+			update_vfd();
+		} else if (b==EVENT_P1_PUSH) {
+			push_preset(0);
+		} else if (b==EVENT_P2_PUSH) {
+			push_preset(1);
+		} else if (b==EVENT_P3_PUSH) {
+			push_preset(2);
+		} else if (b==EVENT_P4_PUSH) {
+			push_preset(3);
+		} else if (b==EVENT_P1_REL) {
+			release_preset(0);
+		} else if (b==EVENT_P2_REL) {
+			release_preset(1);
+		} else if (b==EVENT_P3_REL) {
+			release_preset(2);
+		} else if (b==EVENT_P4_REL) {
+			release_preset(3);
+		} else if (b==EVENT_SEEK_UP) {
+			seek_dir=SEEK_DIR_UP;
+			seek_running=1;
+			first=1;
+			timer_set_seek_cb(seek_timeout,0);
+		} else if (b==EVENT_SEEK_DOWN) {
+			seek_dir=SEEK_DIR_DOWN;
+			seek_running=1;
+			first=1;
+			timer_set_seek_cb(seek_timeout,0);
+		} else {
+			printf("bad event val is %d\n", b);
+		}
+	}
+	return 0;
+}
+
+static void tuner(void *dum) {
+
+	int fd	=io_open(CTRLS0);
+
+	if (fd<0) {
+		printf("could not open controls driver\n");
+		return;
+	}
+	io_control(fd,F_SETFL,(void *)O_NONBLOCK,0);
+
+	register_event(fd, EV_READ, controls_event, 0);
+
+	tstats_fd	=io_open(TSTATS0);
+
+	if (tstats_fd<0) {
+		printf("could not open tstat driver\n");
+		goto skip1;
+	}
+	io_control(tstats_fd,F_SETFL,(void *)O_NONBLOCK,0);
+
+	register_event(tstats_fd, EV_READ, tstats_event, 0);
+
+skip1:
+	while(1) {
+		do_event();
 	}
 }
 
@@ -397,6 +639,10 @@ int init_pkg(void) {
 //	e.io_fd=0;
 //	init_pins(0,0,&e);
 	myfd=io_open(SPI_DRV0);
+	conf_fd=io_open("conf0");
+	if (conf_fd>=0) {
+		io_read(conf_fd, presets, sizeof(presets));
+	}
 	install_cmd_node(&cmn, root_cmd_node);
 	init_pin_test();
 	thread_create(tuner,0,0,1,"tuner");

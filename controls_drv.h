@@ -30,4 +30,34 @@
  *
  * @(#)datalink.h
  */
-#define TW_DRV0	"tw_drv0"
+#define CTRLS0	"ctrls0"
+
+#define EVENT_P1_PUSH		0x0001
+#define EVENT_P2_PUSH		0x0002
+#define EVENT_P3_PUSH		0x0004
+#define EVENT_P4_PUSH		0x0008
+
+#define EVENT_P1_REL		0x0010
+#define EVENT_P2_REL		0x0020
+#define EVENT_P3_REL		0x0040
+#define EVENT_P4_REL		0x0080
+
+#define EVENT_SEEK_DOWN		0x0100
+#define EVENT_SEEK_UP		0x0200
+
+#define EVENT_SET		0x0400
+
+#define EVENT_TUNER_PUSH	0x0800
+#define EVENT_VOL_PUSH		0x1000
+
+#define EVENT_TUNE_DOWN		0x2000
+#define EVENT_TUNE_UP		0x4000
+
+#if 0
+#define EVENT_STAT_ON		0x1
+
+struct ctrls_event {
+	int event_id;
+	int event_stat;
+};
+#endif
