@@ -118,7 +118,7 @@ static struct  device_handle *conf_open(void *inst, DRV_CBH cb, void *udata) {
 				(cfg_addr[i]!=0)) {
 				conf_data->conf=(&cfg_addr[i])+1;
 				conf_data->size=cfg_addr[i];
-				sys_printf("found cfg area of %d bytes\n",cfg_addr[i]);
+//				sys_printf("found cfg area of %d bytes\n",cfg_addr[i]);
 				goto ok;
 			}
 			if (cfg_addr[i]==0xff) {
@@ -128,7 +128,7 @@ static struct  device_handle *conf_open(void *inst, DRV_CBH cb, void *udata) {
 				}
 			}
 		}
-		sys_printf("did not find any cfg area\n");
+//		sys_printf("did not find any cfg area\n");
 ok:
 		if (conf_data->free&&(conf_data->conf>conf_data->free)) {
 			erase_config_sector();
@@ -140,7 +140,6 @@ ok:
 			erase_config_sector();
 			conf_data->free=cfg_addr;conf_data->conf=0;conf_data->size=0;
 		}
-		sys_printf("hejhej\n");
 	}
 
 	return &u->dh;
@@ -155,7 +154,7 @@ static int conf_close(struct device_handle *dh) {
 static int conf_control(struct device_handle *dh, int cmd, void *arg, int size) {
 	struct drv_user *u=(struct drv_user *)dh;
 	struct conf_data *conf_data=u->conf_data;
-	unsigned char *cfg_addr=CFG_AREA_ADDR;
+//	unsigned char *cfg_addr=CFG_AREA_ADDR;
 	int i;
 
 	if (!u) {
@@ -173,6 +172,12 @@ static int conf_control(struct device_handle *dh, int cmd, void *arg, int size) 
 		}
 		case WR_CHAR: {
 			unsigned char *ptr=(unsigned char *)arg;
+			unsigned char *cfg_addr=CFG_AREA_ADDR;
+			if (((conf_data->free-cfg_addr)+size+1)>(128*1024)) {
+				sys_printf("clearing conf flash segment\n");
+				erase_config_sector();
+				conf_data->free=cfg_addr;
+			}
 			while(FLASH->SR&FLASH_SR_BSY);
 			unlock_flash_control_reg();
 			while(FLASH->SR&FLASH_SR_BSY);
@@ -182,14 +187,11 @@ static int conf_control(struct device_handle *dh, int cmd, void *arg, int size) 
 					conf_data->conf[i-1]=0;  // len is before data
 					while(FLASH->SR&FLASH_SR_BSY);
 				}
-//				memset(conf_data->conf-1,0,conf_data->size);
 			}
-//			memcpy(conf_data->free,&size,1);
 			conf_data->free[0]=size;
 			conf_data->free++;
 			conf_data->conf=conf_data->free;
 			conf_data->size=size;
-//			memcpy(conf_data->free,arg,size);
 			for (i=0;i<size;i++) {
 				conf_data->free[i]=*ptr++;
 				while(FLASH->SR&FLASH_SR_BSY);

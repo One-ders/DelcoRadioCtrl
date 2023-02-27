@@ -49,6 +49,7 @@ struct tstats_data {
 	struct device_handle *stop_pin_dh;
 	struct device_handle *mute_pin_dh;
 	struct device_handle *rsense_pin_dh;
+	struct device_handle *ign_pin_dh;
 };
 
 
@@ -135,9 +136,32 @@ static int rsense_irq(struct device_handle *dh, int ev, void *dum) {
 	int pin_stat;
 	struct tstats_data *tsd=&tstats_data_0;
 	pindrv->ops->control(tsd->rsense_pin_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
-	sys_printf("rsense irq pin=%d\n", pin_stat);
+
+	if (pin_stat!=0) { // active hi
+		event[to_ix(ev_i)]=EVENT_RSENSE_ON;
+	} else {
+		event[to_ix(ev_i)]=EVENT_RSENSE_OFF;
+	}
+	ev_i++;
+	wakeup_drv_users(tsd, EV_READ);
 	return 0;
 }
+
+static int ignition_irq(struct device_handle *dh, int ev, void *dum) {
+	int pin_stat;
+	struct tstats_data *tsd=&tstats_data_0;
+	pindrv->ops->control(tsd->ign_pin_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
+
+	if (pin_stat!=0) { // active hi
+		event[to_ix(ev_i)]=EVENT_IGNITION_ON;
+	} else {
+		event[to_ix(ev_i)]=EVENT_IGNITION_OFF;
+	}
+	ev_i++;
+	wakeup_drv_users(tsd, EV_READ);
+	return 0;
+}
+
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -191,13 +215,31 @@ static int tstats_control(struct device_handle *dh, int cmd, void *arg, int size
 		}
 		case GET_STOP_FLAG: {
 			int pin_stat;
-			unsigned long int req=(unsigned long int)req;
 			pindrv->ops->control(
 				tsd->stop_pin_dh,
 				GPIO_SENSE_PIN,
 				&pin_stat,sizeof(pin_stat));
 
 			*((unsigned int *)arg)=pin_stat;
+			return 0;
+			break;
+		}
+		case GET_RSENSE_STAT: {
+			int pin_stat;
+			pindrv->ops->control(
+				tsd->rsense_pin_dh,
+				GPIO_SENSE_PIN,
+				&pin_stat,sizeof(pin_stat));
+
+			*((unsigned int *)arg)=(pin_stat?1:0);
+			return 0;
+			break;
+		}
+		case SET_RADIO_MUTE: {
+			pindrv->ops->control(
+				tsd->mute_pin_dh,
+				GPIO_SET_PIN,
+				arg, size);
 			return 0;
 			break;
 		}
@@ -229,6 +271,7 @@ static int tstats_start(void *inst) {
 	int stop_pin	= STOP;
 	int rsense_pin	= RSENSE;
 	int mute_pin	= RMUTE;
+	int ign_pin	= IGNITION;
 	int rc;
 	int flags;
 
@@ -246,7 +289,6 @@ static int tstats_start(void *inst) {
 
 	tsd->stop_pin_dh=
 		pindrv->ops->open(pindrv->instance,NULL,(void *)tsd);
-//		pindrv->ops->open(pindrv->instance,stop_irq,(void *)tsd);
 	if (!tsd->stop_pin_dh) {
 		goto out1;
 	}
@@ -263,6 +305,12 @@ static int tstats_start(void *inst) {
 		goto out1;
 	}
 
+	tsd->ign_pin_dh=
+		pindrv->ops->open(pindrv->instance,ignition_irq,(void *)tsd);
+	if (!tsd->ign_pin_dh) {
+		goto out1;
+	}
+
 	       /* bind pins to driver instances */
         rc=pindrv->ops->control(tsd->stereo_pin_dh,GPIO_BIND_PIN,&stereo_pin,sizeof(stereo_pin));
         if (rc<0) {
@@ -274,7 +322,6 @@ static int tstats_start(void *inst) {
                 goto out1;
         }
 
-#if 0
         rc=pindrv->ops->control(tsd->rsense_pin_dh,GPIO_BIND_PIN,&rsense_pin,sizeof(rsense_pin));
         if (rc<0) {
                 goto out1;
@@ -285,7 +332,12 @@ static int tstats_start(void *inst) {
                 goto out1;
         }
 
-#endif
+        rc=pindrv->ops->control(tsd->ign_pin_dh,GPIO_BIND_PIN,&ign_pin,sizeof(ign_pin));
+        if (rc<0) {
+                goto out1;
+        }
+
+
 	// Config pins functions //
 
 	// flags for input pins
@@ -296,17 +348,19 @@ static int tstats_start(void *inst) {
 
 	rc=pindrv->ops->control(tsd->stereo_pin_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
 	if (rc<0) {
-		sys_printf("TSTAT driver: pin_flags update failed\n");
 		goto out1;
 	}
 
-#if 0
 	rc=pindrv->ops->control(tsd->rsense_pin_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
 	if (rc<0) {
-		sys_printf("TSTAT reader driver: pin_flags update failed\n");
 		goto out1;
 	}
-#endif
+
+	rc=pindrv->ops->control(tsd->ign_pin_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+		goto out1;
+	}
+
 
 	flags=GPIO_DIR(0,GPIO_INPUT);
 	flags=GPIO_DRIVE(flags,GPIO_PULLDOWN);
@@ -320,7 +374,6 @@ static int tstats_start(void *inst) {
 	}
 
 
-#if 0
 	flags=GPIO_DIR(0,GPIO_OUTPUT);
 	flags=GPIO_DRIVE(flags,GPIO_PUSHPULL);
 	flags=GPIO_SPEED(flags,GPIO_SPEED_SLOW);
@@ -329,7 +382,6 @@ static int tstats_start(void *inst) {
                 sys_printf("TSTAT driver: flags update failed\n");
                 goto out1;
         }
-#endif
 
 out1:
 	return 0;

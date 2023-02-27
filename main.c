@@ -44,6 +44,7 @@
 #include "tstats_drv.h"
 #include "asynchio.h"
 #include "timer.h"
+#include "clock_drv.h"
 
 static int bub(int argc, char **argv, struct Env *env);
 
@@ -261,6 +262,7 @@ struct FM_Freq {
 
 // Radio operations data
 static int tstats_fd;
+static int clock_fd;
 static int set		= 0;
 static int stereo	= 0;
 #define SEEK_DIR_DOWN 0
@@ -269,13 +271,28 @@ static int seek_dir;
 static int seek_running;
 static int pkey;
 static int show_pkey;
+static int show_clock;
+static int only_clock;
+static int clock_colon;
+
+static unsigned char hours;
+static unsigned char minutes;
 static struct FM_Freq active = {87,7};
-static struct FM_Freq presets[4] = {
+static struct FM_Freq presets[11] = {
 		{87,7},
 		{87,7},
 		{87,7},
-		{87,7}
+		{87,7},
+		{87,7},
+		{87,7},
+		{87,7},
+		{87,7},
+		{87,7},
+		{87,7},
+		{87,7},
 };
+
+static void *f_view_timer;
 
 
 
@@ -313,10 +330,38 @@ static int update_vfd() {
 
 	memset(buf,0,sizeof(buf));
 
-	if (show_pkey) {
+	if (only_clock || show_clock) {
 		buf[0]=0x80|0x22;
-		buf[3]= 0x73;    // P
-		buf[4]= encode_digit(pkey+1);
+		if (clock_colon) {
+			buf[1]=0x8;
+		} else {
+			buf[1]=0;
+		}
+		if (hours>9) {
+			buf[1]|=0x2;
+		}
+		buf[2]=encode_digit(hours%10);
+		buf[3]=encode_digit(minutes/10);
+		buf[4]=encode_digit(minutes%10);
+
+		if (set) {
+			buf[1]|=0x80;
+		}
+
+		if (stereo) {
+			buf[1]|=0x04;
+		}
+
+	} else if (show_pkey) {
+		buf[0]=0x80|0x22;
+		buf[2]= 0x73;    // P
+		if ((pkey+1)>9) {
+			buf[3]=encode_digit((pkey+1)/10);
+			buf[4]=encode_digit((pkey+1)%10);
+		} else {
+			buf[3]= encode_digit(pkey+1);
+			buf[4]=0;
+		}
 	} else {
 		buf[0]=0x80|0x22;
 
@@ -409,14 +454,51 @@ static int update_syn() {
 	return 0;
 }
 
+static int mute_radio() {
+	int mute=1;
+	int rc;
+	rc=io_control(tstats_fd, SET_RADIO_MUTE, &mute, sizeof(mute));
+	if (rc<0) {
+		printf("error from radio mute\n");
+	}
+	return 0;
+}
+
+static int unmute_radio() {
+	int mute=0;
+	int rc;
+	rc=io_control(tstats_fd, SET_RADIO_MUTE, &mute, sizeof(mute));
+	if (rc<0) {
+		printf("error from radio unmute\n");
+	}
+	return 0;
+}
+
+
+struct time_buf tbuf;
+
+static int pulse_event(int fd, int event, void *dum) {
+	// toggle colon
+	io_control(fd, CLOCK_GET_TIME, &tbuf, sizeof(tbuf));
+//	show_clock=1;
+	if (only_clock||show_clock) {
+		hours=tbuf.hours;
+		minutes=tbuf.minutes;
+		clock_colon=(clock_colon?0:1);
+		update_vfd();
+	}
+	return 0;
+}
+
 static int update_freq() {
 	update_vfd();
 	update_syn();
 	return 0;
 }
+
 static void *set_timer;
 static int set_timeout(void *udat) { // timeout on set button
-	printf("set_timeout\n");
+//	printf("set_timeout\n");
 	set_timer=0;
 	set=0;
 	update_vfd();
@@ -435,6 +517,7 @@ static int seek_timeout(void *udat) {
 			if (seek_running) {
 				seek_running=0;
 				timer_set_seek_cb(0,0);
+				unmute_radio();
 				return 0;
 			}
 		}
@@ -472,7 +555,9 @@ static int push_preset(int button) {
 	if (set) {
 		int rc;
 		presets[button]=active;
-		timer_delete(set_timer);
+		if (set_timer) {
+			timer_delete(set_timer);
+		}
 		set_timer=0;
 		set=0;
 		show_pkey=1;
@@ -487,18 +572,56 @@ static int push_preset(int button) {
 		show_pkey=1;
 		pkey=button;
 		update_vfd();
+		mute_radio();
 		update_syn();
+		unmute_radio();
 	}
+	return 0;
+}
+
+static int f_view_timeout(void *dum) {
+	f_view_timer=0;
+	show_clock=1;
 	return 0;
 }
 
 static int release_preset(int button) {
 	show_pkey=0;
+
+	if (!only_clock) {
+		if (f_view_timer) {
+			printf("overwriting fw timer %x\n", f_view_timer);
+			timer_delete(f_view_timer);
+		}
+		f_view_timer=timer_create(4,f_view_timeout,0);
+		show_clock=0;
+	}
 	update_vfd();
 	return 0;
 }
 
+static int check_rsense() {
+	int rc;
+	int rsense;
 
+	rc=io_control(tstats_fd, GET_RSENSE_STAT, &rsense, sizeof(rsense));
+	if (rc<0) {
+		return 0;
+	}
+
+	if (rsense) {
+		printf("power on\n");
+		only_clock=0;
+		update_freq();
+		unmute_radio();
+	} else {
+		printf("power off\n");
+		only_clock=1;
+		mute_radio();
+		update_vfd();
+	}
+	return 0;
+}
 
 static int tstats_event(int fd, int event, void *dum) {
 	int b;
@@ -506,7 +629,7 @@ static int tstats_event(int fd, int event, void *dum) {
 
 	rc=io_read(fd, &b, 4);
 	if (rc<0) {
-		printf("%t: got error\n");
+		printf("%t: reading tstats got error\n");
 	} else {
 //		printf("got tstats event %d\n",b);
 		if (b==EVENT_STEREO_ON) {
@@ -515,14 +638,16 @@ static int tstats_event(int fd, int event, void *dum) {
 		} else if (b==EVENT_STEREO_OFF) {
 			stereo=0;
 			update_vfd();
-#if 0
-		} else if (b==EVENT_STOP) {
-			printf("bub\n");
-			if (seek_running) {
-				seek_running=0;
-				timer_set_seek_cb(0,0);
-			}
-#endif
+		} else if (b==EVENT_RSENSE_ON) {
+			printf("rsense on\n");
+			check_rsense();
+		} else if (b==EVENT_RSENSE_OFF) {
+			printf("rsense off\n");
+			check_rsense();
+		} else if (b==EVENT_IGNITION_ON) {
+			printf("ignition on\n");
+		} else if (b==EVENT_IGNITION_OFF) {
+			printf("ignition off\n");
 		}
 	}
 	return 0;
@@ -534,35 +659,51 @@ static int controls_event(int fd, int event, void *dum) {
 
 	rc=io_read(fd, &b, 4);
 	if (rc<0) {
-		printf("%t: got error\n");
+		printf("%t: reading controls got error\n");
 	} else {
+		if (!only_clock) {
+			if (f_view_timer) {
+				printf("overwriting fw timer %x\n", f_view_timer);
+				timer_delete(f_view_timer);
+			}
+			f_view_timer=timer_create(4,f_view_timeout,0);
+			show_clock=0;
+		}
 		if (b==EVENT_TUNE_UP) {
 			if ((active.Mhz>=107) &&
 				(active.Hkhz>=9)) {
-				return 0;
-			}
-			active.Hkhz+=1;
-			if (active.Hkhz>9) {
-				active.Hkhz=0;
-				active.Mhz++;
+				active.Mhz=87;
+				active.Hkhz=7;
+			} else {
+				active.Hkhz+=1;
+				if (active.Hkhz>9) {
+					active.Hkhz=0;
+					active.Mhz++;
+				}
 			}
 			update_freq();
-			printf("wheel ++, f=%d.%d\n", active.Mhz, active.Hkhz);
+//			printf("wheel ++, f=%d.%d\n", active.Mhz, active.Hkhz);
 		} else if (b==EVENT_TUNE_DOWN) {
 			if ((active.Mhz<=87) &&
 				(active.Hkhz<=7)) {
-				return 0;
-			}
-			active.Hkhz-=1;
-			if (active.Hkhz<0) {
+				active.Mhz=107;
 				active.Hkhz=9;
-				active.Mhz--;
+			} else {
+				active.Hkhz-=1;
+				if (active.Hkhz>9) {
+					active.Hkhz=9;
+					active.Mhz--;
+				}
 			}
 			update_freq();
-			printf("wheel --, f=%d.%d\n", active.Mhz, active.Hkhz);
+//			printf("wheel --, f=%d.%d\n", active.Mhz, active.Hkhz);
 		} else if (b==EVENT_SET) {
 			if (!set) {
 				set=1;
+				if (set_timer) {
+					printf("overwriting, set timer %x\n", set_timer);
+					timer_delete(set_timer);
+				}
 				set_timer=timer_create(4,set_timeout,0);
 			} else {
 				set=0;
@@ -580,6 +721,20 @@ static int controls_event(int fd, int event, void *dum) {
 			push_preset(2);
 		} else if (b==EVENT_P4_PUSH) {
 			push_preset(3);
+		} else if (b==EVENT_P5_PUSH) {
+			push_preset(4);
+		} else if (b==EVENT_P6_PUSH) {
+			push_preset(5);
+		} else if (b==EVENT_P7_PUSH) {
+			push_preset(6);
+		} else if (b==EVENT_P8_PUSH) {
+			push_preset(7);
+		} else if (b==EVENT_P9_PUSH) {
+			push_preset(8);
+		} else if (b==EVENT_P10_PUSH) {
+			push_preset(9);
+		} else if (b==EVENT_P11_PUSH) {
+			push_preset(10);
 		} else if (b==EVENT_P1_REL) {
 			release_preset(0);
 		} else if (b==EVENT_P2_REL) {
@@ -588,16 +743,62 @@ static int controls_event(int fd, int event, void *dum) {
 			release_preset(2);
 		} else if (b==EVENT_P4_REL) {
 			release_preset(3);
+		} else if (b==EVENT_P5_REL) {
+			release_preset(4);
+		} else if (b==EVENT_P6_REL) {
+			release_preset(5);
+		} else if (b==EVENT_P7_REL) {
+			release_preset(6);
+		} else if (b==EVENT_P8_REL) {
+			release_preset(7);
+		} else if (b==EVENT_P9_REL) {
+			release_preset(8);
+		} else if (b==EVENT_P10_REL) {
+			release_preset(9);
+		} else if (b==EVENT_P11_REL) {
+			release_preset(10);
 		} else if (b==EVENT_SEEK_UP) {
-			seek_dir=SEEK_DIR_UP;
-			seek_running=1;
-			first=1;
-			timer_set_seek_cb(seek_timeout,0);
+			if (only_clock && set) {
+				if (minutes>=59) {
+					minutes=0;
+				} else {
+					minutes++;
+				}
+				update_vfd();
+				if (set_timer) {
+					timer_delete(set_timer);
+				}
+				set_timer=timer_create(4,set_timeout,0);
+				tbuf.minutes=minutes;
+				io_control(clock_fd, CLOCK_SET_TIME, &tbuf, sizeof(tbuf));
+			} else {
+				seek_dir=SEEK_DIR_UP;
+				mute_radio();
+				seek_running=1;
+				first=1;
+				timer_set_seek_cb(seek_timeout,0);
+			}
 		} else if (b==EVENT_SEEK_DOWN) {
-			seek_dir=SEEK_DIR_DOWN;
-			seek_running=1;
-			first=1;
-			timer_set_seek_cb(seek_timeout,0);
+			if (only_clock && set) {
+				if (hours>=12) {
+					hours=1;
+				} else {
+					hours++;
+				}
+				update_vfd();
+				if (set_timer) {
+					timer_delete(set_timer);
+				}
+				set_timer=timer_create(4,set_timeout,0);
+				tbuf.hours=hours;
+				io_control(clock_fd, CLOCK_SET_TIME, &tbuf, sizeof(tbuf));
+			} else {
+				seek_dir=SEEK_DIR_DOWN;
+				mute_radio();
+				seek_running=1;
+				first=1;
+				timer_set_seek_cb(seek_timeout,0);
+			}
 		} else {
 			printf("bad event val is %d\n", b);
 		}
@@ -610,7 +811,7 @@ static void tuner(void *dum) {
 	int fd	=io_open(CTRLS0);
 
 	if (fd<0) {
-		printf("could not open controls driver\n");
+//		printf("could not open controls driver\n");
 		return;
 	}
 	io_control(fd,F_SETFL,(void *)O_NONBLOCK,0);
@@ -620,12 +821,21 @@ static void tuner(void *dum) {
 	tstats_fd	=io_open(TSTATS0);
 
 	if (tstats_fd<0) {
-		printf("could not open tstat driver\n");
+//		printf("could not open tstat driver\n");
 		goto skip1;
 	}
 	io_control(tstats_fd,F_SETFL,(void *)O_NONBLOCK,0);
 
 	register_event(tstats_fd, EV_READ, tstats_event, 0);
+
+	clock_fd	=io_open(CLOCK_DRV);
+	if (clock_fd<0) {
+		goto skip1;
+	}
+
+	register_event(clock_fd, EV_STATE, pulse_event, 0);
+
+	check_rsense();
 
 skip1:
 	while(1) {

@@ -233,17 +233,242 @@ static int tw_pin4_irq(struct device_handle *dh, int ev, void *dum) {
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////// Key Matrix //////////////////////////////////////////////////
 
+#define PB_STATE_OFF 0
+#define PB_STATE_ON  1
+struct phys_button {
+	int state;
+	int lb;
+	int time;
+};
+
 static int cp1scan_seek=0;
 static int cp2p3p4set=0;
 
 static int seek=0;
 static int scan=0;
 static int set=0;
-static int p1=0;
-static int p2=0;
-static int p3=0;
-static int p4=0;
+
+static struct phys_button phys_button[4];
+
 static int sweep_cnt=0;
+
+int (*pb_tfunc)(struct phys_button *, int);
+struct phys_button *pb_tdata;
+
+#if 0
+
+				event[to_ix(ev_i)]=EVENT_P4_PUSH;
+				ev_i++;
+				wakeup_drv_users(ctd, EV_READ);
+//				sys_printf("p4 pushed\n");
+				p4=1;
+#endif
+
+static int key2ev(int key, int state) {
+	int ev=0;
+	switch(key) {
+		case 1:
+			ev=(state==1)?EVENT_P1_PUSH:EVENT_P1_REL;
+			break;
+		case 2:
+			ev=(state==1)?EVENT_P2_PUSH:EVENT_P2_REL;
+			break;
+		case 3:
+			ev=(state==1)?EVENT_P3_PUSH:EVENT_P3_REL;
+			break;
+		case 4:
+			ev=(state==1)?EVENT_P4_PUSH:EVENT_P4_REL;
+			break;
+		case 5:
+			ev=(state==1)?EVENT_P5_PUSH:EVENT_P5_REL;
+			break;
+		case 6:
+			ev=(state==1)?EVENT_P6_PUSH:EVENT_P6_REL;
+			break;
+		case 7:
+			ev=(state==1)?EVENT_P7_PUSH:EVENT_P7_REL;
+			break;
+		case 8:
+			ev=(state==1)?EVENT_P8_PUSH:EVENT_P8_REL;
+			break;
+		case 9:
+			ev=(state==1)?EVENT_P9_PUSH:EVENT_P9_REL;
+			break;
+		case 10:
+			ev=(state==1)?EVENT_P10_PUSH:EVENT_P10_REL;
+			break;
+		case 11:
+			ev=(state==1)?EVENT_P11_PUSH:EVENT_P11_REL;
+			break;
+	}
+	return ev;
+}
+
+
+static int lb_on(int key) {
+	struct ctrls_data *ctd=&ctrls_data_0;
+	sys_printf("key %d active\n", key);
+
+	event[to_ix(ev_i)]=key2ev(key,1);
+	ev_i++;
+	wakeup_drv_users(ctd, EV_READ);
+	return 0;
+}
+
+static int lb_off(int key) {
+	struct ctrls_data *ctd=&ctrls_data_0;
+	sys_printf("key %d deactive\n", key);
+	event[to_ix(ev_i)]=key2ev(key,0);
+	ev_i++;
+	wakeup_drv_users(ctd, EV_READ);
+	return 0;
+}
+
+
+static int pb_timeout(struct phys_button *b, int time) {
+//	sys_printf("pb timeout for %x at %d\n",
+//				b-phys_button,time);
+	if ((!b->lb)&&time&&(time-b->time)>=5) {
+		b->time=time;
+		b->lb=(b-phys_button)+1;
+//		sys_printf("pb_tout prim function\n");
+		lb_on(b->lb);
+		if (b->state==PB_STATE_ON) {
+			pb_tfunc=0;
+		}
+	} else if ((b->lb) && ((time-b->time)>4)) {
+		pb_tfunc=0;
+		b->time=0;
+//		sys_printf("pb_tout function off\n");
+		lb_off(b->lb);
+		b->lb=0;
+	}
+
+	return 0;
+}
+
+static int wait;
+static int pb_event(struct phys_button *b, int state, int time) {
+	b->state=state;
+//	sys_printf("pb_event: b=%x, state=%d, time=%d\n",
+//			b-phys_button, state, time);
+
+	if (state==PB_STATE_ON) {
+		switch(b-phys_button) {
+			case 0: // first button
+				if (phys_button[1].state==PB_STATE_ON) {
+					b->time=0;
+					phys_button[1].time=0;
+					pb_tfunc=0;
+					b->lb=9;
+					phys_button[1].lb=9;
+//					sys_printf("lb=9\n");
+					lb_on(9);
+					goto out;
+				}
+				break;
+			case 1:
+				if (phys_button[0].state==PB_STATE_ON) {
+					b->time=0;
+					phys_button[0].time=0;
+					pb_tfunc=0;
+					b->lb=9;
+					phys_button[0].lb=9;
+//					sys_printf("lb=9\n");
+					lb_on(9);
+					goto out;
+				} else if (phys_button[2].state==PB_STATE_ON) {
+					b->time=0;
+					phys_button[2].time=0;
+					pb_tfunc=0;
+					b->lb=10;
+					phys_button[2].lb=10;
+//					sys_printf("lb=10\n");
+					lb_on(10);
+					goto out;
+				}
+				break;
+			case 2:
+				if (phys_button[1].state==PB_STATE_ON) {
+					b->time=0;
+					phys_button[1].time=0;
+					pb_tfunc=0;
+					b->lb=10;
+					phys_button[1].lb=10;
+//					sys_printf("lb=10\n");
+					lb_on(10);
+					goto out;
+				} else if (phys_button[3].state==PB_STATE_ON) {
+					b->time=0;
+					phys_button[3].time=0;
+					pb_tfunc=0;
+					b->lb=11;
+					phys_button[3].lb=11;
+//					sys_printf("lb=11\n");
+					lb_on(11);
+					goto out;
+				}
+				break;
+			case 3:
+				if (phys_button[2].state==PB_STATE_ON) {
+					b->time=0;
+					phys_button[2].time=0;
+					pb_tfunc=0;
+					b->lb=11;
+					phys_button[2].lb=11;
+//					sys_printf("lb=11\n");
+					lb_on(11);
+					goto out;
+				}
+				break;
+		}
+
+
+		if (!b->time) {
+			b->time=time;
+		} else if (b->time&&((time-b->time)<=4)) {
+			b->time=0;
+			pb_tfunc=0;
+			b->lb=(b-phys_button)+5;
+//			sys_printf("pb_event: activate second\n");
+			lb_on(b->lb);
+			goto out;
+		}
+	} else {
+		if (b->lb) {
+			b->time=0;
+			pb_tfunc=0;
+//			sys_printf("pb_event: deactivate %d\n", b->lb);
+			lb_off(b->lb);
+			if (b->lb>8) { // double keys
+				int hi_b=b->lb-8;
+				int pb=b-phys_button;
+				if (pb==hi_b) {
+					phys_button[hi_b-1].lb=0;
+				} else {
+					phys_button[hi_b].lb=0;
+				}
+				wait=1;
+			} else {
+				wait=0;
+			}
+			b->lb=0;
+			goto out;
+		}
+	}
+
+	if (wait) {
+		b->time=0;
+		pb_tfunc=0;
+		wait=0;
+	} else {
+		pb_tdata=b;
+		pb_tfunc=pb_timeout;
+	}
+out:
+	return 0;
+}
+
 
 static int p4_seek_irq(struct device_handle *dh, int ev, void *dum) {
 	int pin_stat;
@@ -260,18 +485,12 @@ static int p4_seek_irq(struct device_handle *dh, int ev, void *dum) {
 				seek=1;
 			}
 		} else if (cp2p3p4set) {
-			if (!p4) {
-				event[to_ix(ev_i)]=EVENT_P4_PUSH;
-				ev_i++;
-				wakeup_drv_users(ctd, EV_READ);
-//				sys_printf("p4 pushed\n");
-				p4=1;
+			if (phys_button[3].state==PB_STATE_OFF) {
+				pb_event(&phys_button[3],PB_STATE_ON,sweep_cnt);
 			}
 		} else {
 			sys_printf("p4_seek spurious irq\n");
 		}
-	} else {
-//		sys_printf("p4_seek went hi\n");
 	}
 
 	return 0;
@@ -284,20 +503,14 @@ static int p2_irq(struct device_handle *dh, int ev, void *dum) {
 	pindrv->ops->control(ctd->p2_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
 	if (!pin_stat) {
 		if (cp1scan_seek) {
-			sys_printf("p2 spurious\n");
+			sys_printf("pb2 spurious\n");
 		} else if (cp2p3p4set) {
-			if (!p2) {
-				event[to_ix(ev_i)]=EVENT_P2_PUSH;
-				ev_i++;
-				wakeup_drv_users(ctd, EV_READ);
-//				sys_printf("p2 pushed\n");
-				p2=1;
+			if (phys_button[1].state==PB_STATE_OFF) {
+				pb_event(&phys_button[1],PB_STATE_ON,sweep_cnt);
 			}
 		} else {
 			sys_printf("p2 spurious2 irq\n");
 		}
-	} else {
-//		sys_printf("p2 went hi\n");
 	}
 	return 0;
 }
@@ -309,30 +522,16 @@ static int p1p3_irq(struct device_handle *dh, int ev, void *dum) {
 	pindrv->ops->control(ctd->p1p3_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
 	if (!pin_stat) {
 		if (cp1scan_seek) {
-			if (!p1) {
-				event[to_ix(ev_i)]=EVENT_P1_PUSH;
-				ev_i++;
-				wakeup_drv_users(ctd, EV_READ);
-				sys_printf("p1 pushed at %d\n",sweep_cnt);
-				p1=1;
+			if (phys_button[0].state==PB_STATE_OFF) {
+				pb_event(&phys_button[0],PB_STATE_ON,sweep_cnt);
 			}
 		} else if (cp2p3p4set) {
-			if (!p3) {
-				event[to_ix(ev_i)]=EVENT_P3_PUSH;
-				ev_i++;
-				wakeup_drv_users(ctd, EV_READ);
-//				sys_printf("p3 pushed\n");
-				p3=1;
+			if (phys_button[2].state==PB_STATE_OFF) {
+				pb_event(&phys_button[2],PB_STATE_ON,sweep_cnt);
 			}
 		} else {
 			sys_printf("p1p3 spurious irq\n");
 		}
-	} else {
-//		if (cp1scan_seek) {
-//			sys_printf("p1 release irq\n");
-//		} else {
-//			sys_printf("p3 release irq\n");
-//		}
 	}
 	return 0;
 }
@@ -371,39 +570,28 @@ static int set_scan_irq(struct device_handle *dh, int ev, void *dum) {
 static int ctrls_timeout(struct device_handle *dh, int ev, void *dum) {
 	struct ctrls_data *ctd=(struct ctrls_data *)dum;
 
+	sweep_cnt++;
+
 	if (!cp1scan_seek) {
 		int pin_stat=0;
 		cp1scan_seek=1;
 		cp2p3p4set=0;
-		sweep_cnt++;
-		if (p2) {
+		if (phys_button[1].state==PB_STATE_ON) {
 			pindrv->ops->control(ctd->p2_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
 			if (pin_stat) {
-				p2=0;
-				event[to_ix(ev_i)]=EVENT_P2_REL;
-				ev_i++;
-				wakeup_drv_users(ctd, EV_READ);
-//				sys_printf("p2 released\n");
+				pb_event(&phys_button[1],PB_STATE_OFF,sweep_cnt);
 			}
 		}
-		if (p3) {
+		if (phys_button[2].state==PB_STATE_ON) {
 			pindrv->ops->control(ctd->p1p3_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
 			if (pin_stat) {
-				p3=0;
-				event[to_ix(ev_i)]=EVENT_P3_REL;
-				ev_i++;
-				wakeup_drv_users(ctd, EV_READ);
-//				sys_printf("p3 released\n");
+				pb_event(&phys_button[2],PB_STATE_OFF,sweep_cnt);
 			}
 		}
-		if (p4) {
+		if (phys_button[3].state==PB_STATE_ON) {
 			pindrv->ops->control(ctd->p4_seek_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
 			if (pin_stat) {
-				p4=0;
-				event[to_ix(ev_i)]=EVENT_P4_REL;
-				ev_i++;
-				wakeup_drv_users(ctd, EV_READ);
-//				sys_printf("p4 released\n");
+				pb_event(&phys_button[3],PB_STATE_OFF,sweep_cnt);
 			}
 		}
 		if (set) {
@@ -420,14 +608,11 @@ static int ctrls_timeout(struct device_handle *dh, int ev, void *dum) {
 		int pin_stat=0;
 		cp1scan_seek=0;
 		cp2p3p4set=1;
-		if (p1) {
+			pindrv->ops->control(ctd->p2_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
+		if (phys_button[0].state==PB_STATE_ON) {
 			pindrv->ops->control(ctd->p1p3_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
 			if (pin_stat) {
-				p1=0;
-				event[to_ix(ev_i)]=EVENT_P1_REL;
-				ev_i++;
-				wakeup_drv_users(ctd, EV_READ);
-//				sys_printf("p1 released matrix timeout\n");
+				pb_event(&phys_button[0],PB_STATE_OFF,sweep_cnt);
 			}
 		}
 		if (scan) {
@@ -445,6 +630,9 @@ static int ctrls_timeout(struct device_handle *dh, int ev, void *dum) {
 
 		pindrv->ops->control(ctd->cp1scan_seek_dh, GPIO_SET_PIN,&one,sizeof(one));
 		pindrv->ops->control(ctd->cp2p3p4set_dh, GPIO_SET_PIN,&zero,sizeof(zero));
+	}
+	if (pb_tfunc) {
+		pb_tfunc(pb_tdata,sweep_cnt);
 	}
 	timerdrv->ops->control(ctd->timer_dh,HR_TIMER_SET,&sweep_step_time,sizeof(sweep_step_time));
 	return 0;

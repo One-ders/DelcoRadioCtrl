@@ -35,28 +35,30 @@
 #define CE GPIO_PIN(GPIO_PC,13)	// RTC, LED
 #endif
 
-#define VF_STROBE_PIN	GPIO_PIN(GPIO_PB,9)
-#define CLK_PIN		GPIO_PIN(GPIO_PB,3)
-#define SYN_STROBE_PIN  GPIO_PIN(GPIO_PB,8)
-#define DATA_PIN	GPIO_PIN(GPIO_PA,15)
+// Irq pins: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, xx, xx, 13, 14, 15
+//           B  A  A  A  A  A  A  A  A  A   A           B   C   B
+//           B 12 free for irq input
 
-#define TUNE_WHEEL_1	GPIO_PIN(GPIO_PA,3)
-#define TUNE_WHEEL_2	GPIO_PIN(GPIO_PA,2)
-#define TUNE_WHEEL_4	GPIO_PIN(GPIO_PA,1)
+#define FREE_INPUT_P3	GPIO_PIN(GPIO_PC,14)
+#define IGNITION	GPIO_PIN(GPIO_PA,9) // irq 9  was PA0 and PB10
+#define TUNE_WHEEL_4	GPIO_PIN(GPIO_PA,1) // irq 1
+#define TUNE_WHEEL_2	GPIO_PIN(GPIO_PA,2) // irq 2
+#define TUNE_WHEEL_1	GPIO_PIN(GPIO_PA,3) // irq 3
+#define STOP		GPIO_PIN(GPIO_PA,4) // no irq, input
+#define STEREO		GPIO_PIN(GPIO_PA,5) // irq 5
+#define P4Seek		GPIO_PIN(GPIO_PA,6) // irq 6
+#define P2		GPIO_PIN(GPIO_PA,7) // irq 7
+#define P1P3		GPIO_PIN(GPIO_PB,0) // irq 0
 
-
-#define STOP		GPIO_PIN(GPIO_PA,4)
-#define STEREO		GPIO_PIN(GPIO_PA,5)
-//#define IGN_ON		GPIO_PIN(GPIO_PA,0)
-#define P4Seek		GPIO_PIN(GPIO_PA,6)
-#define P2		GPIO_PIN(GPIO_PA,7)
-#define P1P3		GPIO_PIN(GPIO_PB,0)
-#define SetScan		GPIO_PIN(GPIO_PA,10)
-
-#define CP2P3P4Set	GPIO_PIN(GPIO_PB,1)
-#define CP1ScanSeek	GPIO_PIN(GPIO_PB,2)
-#define RECAL		GPIO_PIN(GPIO_PB,7)
-#define RSENSE		GPIO_PIN(GPIO_PB,13)
-#define RMUTE		GPIO_PIN(GPIO_PA,9)
-#define AM_FM		GPIO_PIN(GPIO_PB,5)
-#define TOD		GPIO_PIN(GPIO_PB,4)
+#define CP2P3P4Set	GPIO_PIN(GPIO_PB,1) // no irq output
+#define CP1ScanSeek	GPIO_PIN(GPIO_PB,2) // no irq output
+#define VF_STROBE_PIN	GPIO_PIN(GPIO_PB,9) // no irq output
+#define SYN_STROBE_PIN  GPIO_PIN(GPIO_PB,8) // no irq output
+#define RECAL		GPIO_PIN(GPIO_PB,15) //  irq 15 was irq 7 conflict
+#define RSENSE		GPIO_PIN(GPIO_PA,8)// irq 8 , input
+#define RMUTE		GPIO_PIN(GPIO_PB,14) // no irq, output
+#define AM_FM		GPIO_PIN(GPIO_PB,13) // irq 13 was irq 5 conflict
+#define TOD		GPIO_PIN(GPIO_PB,4) // irq 4 input 50 Hz
+#define CLK_PIN		GPIO_PIN(GPIO_PB,3)  // no irq output
+#define DATA_PIN	GPIO_PIN(GPIO_PA,15) // no irq output
+#define SetScan		GPIO_PIN(GPIO_PA,10) // irq 10 input

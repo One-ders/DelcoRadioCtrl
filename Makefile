@@ -37,7 +37,7 @@ my_drivers: $(LOBJ)/usr $(LOBJ)/usr/radio_drivers.o
 $(LOBJ)/usr:
 	mkdir -p $(LOBJ)/usr
 
-$(LOBJ)/usr/radio_drivers.o: dl_drv.o controls_drv.o tstats_drv.o conf_drv.o
+$(LOBJ)/usr/radio_drivers.o: dl_drv.o controls_drv.o tstats_drv.o conf_drv.o clock_drv.o
 	$(CC) -r -nostdlib -o $@ $^
 
 

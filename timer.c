@@ -13,10 +13,11 @@
 
 
 struct Timer_obj {
-   unsigned int     tfire;
-   TimeoutHandler   th;
-   void             *udata;
-   struct Timer_obj *next;
+	unsigned int     tfire;
+	TimeoutHandler   th;
+	void             *udata;
+	struct Timer_obj *next;
+	struct Timer_obj **prev_nextp;
 };
 
 
@@ -30,14 +31,15 @@ static int min_now;
 static struct Timer_obj *hours[1024];
 static int hour_now;
 
-static struct Timer_obj timers[16];
-static int tmask=0xf;
+#define NR_TIMERS	16
+static struct Timer_obj timers[NR_TIMERS];
+static int tmask=0xffff;
 
 struct Timer_obj *get_timer_obj() {
 	int i=ffs(tmask);
 	if (i) {
-		printf("get timer obj %d\n", i);
-		tmask&=~i;
+//		printf("get timer obj %d\n", i-1);
+		tmask&=~(1<<(i-1));
 		return &timers[i-1];
 	}
 	return 0;
@@ -46,9 +48,17 @@ struct Timer_obj *get_timer_obj() {
 void put_timer_obj(struct Timer_obj *tobj) {
 	int i=tobj-timers;
 
-	printf("put timer obj %d\n", (1<<i));
-	if ((i<0)||(i>15)) {
+	if (!tobj) {
+		printf("release of null timer\n");
+		return;
+	}
+//	printf("put timer obj %d\n", i);
+	if ((i<0)||(i>(NR_TIMERS-1))) {
 		printf("timer return error\n");
+		return;
+	}
+	if (tmask&(1<<i)) {
+		printf("release of idle timer\n");
 		return;
 	}
 //	timer[i]=tobj;
@@ -94,11 +104,19 @@ static int handle_tic(int dum, int dum2, void *bum) {
 			int m_ix=(tmins+min_now)%60;
 			assert(tmp->tfire<60*120);
 			tmp->next=mins[m_ix];
+			tmp->prev_nextp=&mins[m_ix];
+			if (mins[m_ix]) {
+				mins[m_ix]->prev_nextp=&tmp->next;
+			}
 			mins[m_ix]=tmp;
 		} else {
 			int hs_ix=(tmp->tfire+hsec_now)%120;
 			assert(tmp->tfire<120);
 			tmp->next=hsecs[hs_ix];
+			tmp->prev_nextp=&hsecs[hs_ix];
+			if (hsecs[hs_ix]) {
+				hsecs[hs_ix]->prev_nextp=&tmp->next;
+			}
 			hsecs[hs_ix]=tmp;
 		}
 		tmp=tmp1;
@@ -113,6 +131,10 @@ static int handle_tic(int dum, int dum2, void *bum) {
 		assert(tmp->tfire<120);
 		hs_ix=(tmp->tfire+hsec_now)%120;
 		tmp->next=hsecs[hs_ix];
+		tmp->prev_nextp=&hsecs[hs_ix];
+		if (hsecs[hs_ix]) {
+			hsecs[hs_ix]->prev_nextp=&tmp->next;
+		}
 		hsecs[hs_ix]=tmp;
 		tmp=tmp1;
 	}
@@ -135,18 +157,17 @@ static int timer_count=0;
 static int init_timer(void) {
 	hsec_now=min_now=hour_now=0;
 	timerRunning=1;
-	printf("starting timer\n");
+//	printf("starting timer\n");
 	register_timer(50, handle_tic, NULL);
 	return 0;
 }
 
 static int stop_timer(void) {
-	printf("stopping timer\n");
+//	printf("stopping timer\n");
 	timerRunning=0;
 	register_timer(0,NULL,NULL);
 	return 0;
 }
-
 
 void *timer_create(unsigned int seconds, TimeoutHandler th, void *udata) {
 	struct Timer_obj *timer=get_timer_obj();
@@ -166,15 +187,29 @@ void *timer_create(unsigned int seconds, TimeoutHandler th, void *udata) {
 	if (seconds>(120*60)) {
 		int h_ix=(hour_now+(seconds/(120*60)))%1024;
 		timer->next=hours[h_ix];
+		timer->prev_nextp=&hours[h_ix];
+		if (timer->next) {
+			timer->next->prev_nextp=&timer->next;
+		}
 		hours[h_ix]=timer;
 	} else if (seconds>120) {
 		int m_ix=(min_now+(seconds/120))%60;
 		timer->next=mins[m_ix];
+		timer->prev_nextp=&mins[m_ix];
+		if (timer->next) {
+			timer->next->prev_nextp=&timer->next;
+		}
 		mins[m_ix]=timer;
 	} else {
 		int hs_ix=(hsec_now+(seconds*2))%120;
 		timer->next=hsecs[hs_ix];
+		timer->prev_nextp=&hsecs[hs_ix];
+		if (timer->next) {
+			timer->next->prev_nextp=&timer->next;
+		}
 		hsecs[hs_ix]=timer;
+//		printf("timer created at %x, next is %x, prev_nextp is %x\n",
+//			timer, timer->next, timer->prev_nextp);
 	}
 	return timer;
 }
@@ -182,4 +217,13 @@ void *timer_create(unsigned int seconds, TimeoutHandler th, void *udata) {
 void timer_delete(void *th_v) {
 	struct Timer_obj *timer=(struct Timer_obj *)th_v;
 	timer->th=NULL;
+	if (timer->next) {
+		timer->next->prev_nextp=timer->prev_nextp;
+	}
+	*timer->prev_nextp=timer->next;
+
+//	printf("timer delete at %x\n");
+	timer->next=NULL;
+	timer->prev_nextp=NULL;
+	put_timer_obj(timer);
 }
