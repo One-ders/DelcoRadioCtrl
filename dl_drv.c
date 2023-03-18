@@ -42,6 +42,8 @@
 #define MIN(a,b) (a<b)?a:b
 #define MAX_USERS 4
 
+static int blocked;
+
 static struct driver *leddrv;
 static struct driver *pindrv;
 static struct driver *timerdrv;
@@ -338,25 +340,13 @@ static int dl_drv_control(struct device_handle *dh, int cmd, void *arg, int size
 
 	switch(cmd) {
 		case RD_CHAR: {
-#if 0
-			int len=0;
-			int *buf=(int *)arg;
-			if ((buf_in-buf_out)<=0) {
-				u->events|=EV_READ;
-				return -DRV_AGAIN;
-			}
-
-			u->events&=~EV_READ;
-			len=MIN(size,sizeof(struct bit_array));
-			memcpy(buf,&saved_data[buf_out&(numbufs-1)],len);
-			buf_out++;
-			return len;
-#endif
 			return -1;
 			break;
 		}
 		case WR_CHAR: {
 			unsigned char *buf=(unsigned char *)arg;
+
+			if (blocked) return -1;
 
 			if (busy) {
 				sys_printf("write to busy drv\n");
@@ -367,17 +357,7 @@ static int dl_drv_control(struct device_handle *dh, int cmd, void *arg, int size
 			break;
 		}
 		case IO_POLL: {
-//			unsigned int events=(unsigned int)arg;
 			unsigned int revents=0;
-#if 0
-			if (EV_READ&events) {
-				if (buf_in-buf_out) {
-					revents|=EV_READ;
-				} else {
-					u->events|=EV_READ;
-				}
-			}
-#endif
 			return revents;
 			break;
 		}
@@ -535,6 +515,10 @@ static int dl_drv_start(void *inst) {
 	strobe_off(dld);
 	data_out(dld, 0);
 
+	if (SystemCoreClock<84000000) {
+		blocked=1;
+	}
+
 	sys_printf("DL protocol driver: Started\n");
 
 	return 0;
@@ -555,6 +539,29 @@ out1:
 	return 0;
 }
 
+static int dl_drv_clk_update(void *inst, int hz) {
+	struct dl_data *dld=(struct dl_data *)inst;
+
+	if (hz<84000000) {
+		// hr_timer is not running under 84 Mhz
+		// so this driver cant work under that
+		blocked=1;
+		busy=0;
+
+		current_bit_no=0;
+		led_off(dld->led_dh);
+		clk_down(dld);
+		fnc_vf=1;
+		strobe_off(dld);
+		fnc_vf=0;
+		strobe_off(dld);
+		data_out(dld, 0);
+	} else {
+		blocked=0;
+	}
+	return 0;
+}
+
 
 
 static struct driver_ops dl_drv_ops = {
@@ -563,6 +570,7 @@ static struct driver_ops dl_drv_ops = {
 	dl_drv_control,
 	dl_drv_init,
 	dl_drv_start,
+	dl_drv_clk_update,
 };
 
 static struct driver dl_drv = {

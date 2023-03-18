@@ -101,19 +101,26 @@ static int wakeup_drv_users(struct tstats_data *tsd,int ev) {
 
 //////////////////////////////////////////////////////////////////////////
 ///
+static int prev_stereo_ev_ix;
 static int stereo_irq(struct device_handle *dh, int ev, void *dum) {
 	int pin_stat;
+	int reuse=0;
 	struct tstats_data *tsd=&tstats_data_0;
 	pindrv->ops->control(tsd->stereo_pin_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
-//	sys_printf("stereo irq pin=%d\n",pin_stat);
 
-	if (pin_stat==0) { // active low
-		event[to_ix(ev_i)]=EVENT_STEREO_ON;
+	if (prev_stereo_ev_ix>ev_o) {
+		// update prev event or new
+		reuse=1;
 	} else {
-		event[to_ix(ev_i)]=EVENT_STEREO_OFF;
+		prev_stereo_ev_ix=ev_i;
 	}
-	ev_i++;
-	wakeup_drv_users(tsd, EV_READ);
+
+	event[to_ix(prev_stereo_ev_ix)]=(pin_stat==0)?EVENT_STEREO_ON:EVENT_STEREO_OFF;
+
+	if (!reuse) {
+		ev_i++;
+		wakeup_drv_users(tsd, EV_READ);
+	}
 	return 0;
 }
 
@@ -132,11 +139,14 @@ static int stop_irq(struct device_handle *dh, int ev, void *dum) {
 }
 #endif
 
+static int prev_rsense_stat;
 static int rsense_irq(struct device_handle *dh, int ev, void *dum) {
 	int pin_stat;
 	struct tstats_data *tsd=&tstats_data_0;
 	pindrv->ops->control(tsd->rsense_pin_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
 
+	if (pin_stat==prev_rsense_stat) return 0;
+	prev_rsense_stat=pin_stat;
 	if (pin_stat!=0) { // active hi
 		event[to_ix(ev_i)]=EVENT_RSENSE_ON;
 	} else {
@@ -147,11 +157,14 @@ static int rsense_irq(struct device_handle *dh, int ev, void *dum) {
 	return 0;
 }
 
+static int prev_ign_stat;
 static int ignition_irq(struct device_handle *dh, int ev, void *dum) {
 	int pin_stat;
 	struct tstats_data *tsd=&tstats_data_0;
 	pindrv->ops->control(tsd->ign_pin_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
 
+	if (pin_stat==prev_ign_stat) return 0;
+	prev_ign_stat=pin_stat;
 	if (pin_stat!=0) { // active hi
 		event[to_ix(ev_i)]=EVENT_IGNITION_ON;
 	} else {
@@ -231,6 +244,19 @@ static int tstats_control(struct device_handle *dh, int cmd, void *arg, int size
 				GPIO_SENSE_PIN,
 				&pin_stat,sizeof(pin_stat));
 
+			prev_rsense_stat=pin_stat;
+			*((unsigned int *)arg)=(pin_stat?1:0);
+			return 0;
+			break;
+		}
+		case GET_IGNITION_STAT: {
+			int pin_stat;
+			pindrv->ops->control(
+				tsd->ign_pin_dh,
+				GPIO_SENSE_PIN,
+				&pin_stat,sizeof(pin_stat));
+
+			prev_ign_stat=pin_stat;
 			*((unsigned int *)arg)=(pin_stat?1:0);
 			return 0;
 			break;
@@ -277,7 +303,7 @@ static int tstats_start(void *inst) {
 
 	if (!pindrv) pindrv=driver_lookup(GPIO_DRV);
 	if (!pindrv) {
-		sys_printf("TST: missing GPIO_DRV\n");
+//		sys_printf("TST: missing GPIO_DRV\n");
 		goto out1;
 	}
 
@@ -351,11 +377,6 @@ static int tstats_start(void *inst) {
 		goto out1;
 	}
 
-	rc=pindrv->ops->control(tsd->rsense_pin_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-	if (rc<0) {
-		goto out1;
-	}
-
 	rc=pindrv->ops->control(tsd->ign_pin_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
 	if (rc<0) {
 		goto out1;
@@ -369,17 +390,23 @@ static int tstats_start(void *inst) {
 
 	rc=pindrv->ops->control(tsd->stop_pin_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
 	if (rc<0) {
-		sys_printf("TSTAT reader driver: pin_flags update failed\n");
 		goto out1;
 	}
 
+
+
+	flags=GPIO_IRQ_ENABLE(flags);
+	rc=pindrv->ops->control(tsd->rsense_pin_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+		goto out1;
+	}
 
 	flags=GPIO_DIR(0,GPIO_OUTPUT);
 	flags=GPIO_DRIVE(flags,GPIO_PUSHPULL);
 	flags=GPIO_SPEED(flags,GPIO_SPEED_SLOW);
 	rc=pindrv->ops->control(tsd->mute_pin_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
         if (rc<0) {
-                sys_printf("TSTAT driver: flags update failed\n");
+//		sys_printf("TSTAT driver: flags update failed\n");
                 goto out1;
         }
 

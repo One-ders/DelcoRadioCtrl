@@ -29,6 +29,7 @@ static int irqs;
 
 static int tod_pin_irq(struct device_handle *dh, int ev, void *dum) {
 	struct clock_data *cd=(struct clock_data *)dum;
+//	unsigned int *SCR=(unsigned int *)0xe000ed10;
 	irqs++;
 	if (irqs>=100) { // irq both on up and down flank
 		irqs=0;
@@ -50,6 +51,7 @@ static int tod_pin_irq(struct device_handle *dh, int ev, void *dum) {
 		}
 //		sys_printf("1 sec irq\n");
 	}
+
 	return 0;
 }
 
@@ -58,22 +60,28 @@ static int tod_pin_irq(struct device_handle *dh, int ev, void *dum) {
 static struct device_handle *clock_open(void *inst, DRV_CBH cb, void *udata) {
 	struct drv_user *u=get_drv_user();
 	struct clock_data *clock_data;
-	if (!u) return 0;
+	if (!u) {
+		sys_printf("clock_open: failed to open tod clock\n");
+		return 0;
+	}
 	clock_data=u->clock_data=(struct clock_data *)inst;
 	u->callback=cb;
 	u->userdata=udata;
 //	u->events=0;
 	u->events=EV_STATE;
 
+	sys_printf("clock_open: tod clock open rc  %x\n", &u->dh);
 	return &u->dh;
 }
 
 static int clock_close(struct device_handle *dh) {
 	struct drv_user *u=(struct drv_user *)dh;
 	if (!u) {
+		sys_printf("clock_close: tod clock close bad u %x\n", dh);
 		return 0;
 	}
-	if (!u) {
+	if (u) {
+		sys_printf("clock_close: tod clock close %x\n", dh);
 		u->in_use=0;
 		u->clock_data=0;
 	}

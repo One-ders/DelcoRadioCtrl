@@ -1,0 +1,49 @@
+
+VF driver DM179 could be a  rebranded OKI MSC1149-XX
+34 bit shift register with a 33 bit latch.
+(page 138, http://www.bitsavers.org/components/oki/_dataBooks/1989_OKI_Vacuum_Flourescent_Driver_Data_Book.pdf)
+
+Quad Analog switch DM188, pin out eq to maxim MAX4620
+
+
+funktioner:
+
+	Klocka, implementera som driver. assign a pin for 50hz time of day tone 	from  DM188. Pin count down from  60x50 = 3000, to increment, minutes		when zero, then reload.
+
+	User can read current time (hours:minutes) from driver API, can also put	the socket into select mask to get released when time changes.
+
+	User can write hours:minutes to update time in driver.
+
+	time is 24 hours but display cant show it, so user code
+	must convert to 1-12.
+
+	set pushed when clock is showing, can be used to adjust clock
+
+	set times out after 5 sec or toggle push
+
+	pushing recall with iginition off, lights up clock for 4 Sec, Set Scan &Seek works during the time.
+
+
+	Radio:
+		seek: search up
+		scan+seek: search backward
+
+		Push tune, to activate BT module (or answer call)
+
+		push vol, to toggle time vs frequncy
+
+		set + preset button stores current channel
+
+		preset button, swith to stored channel.
+
+
+
+
+Standby current ignition off: 7 mA
+	peek at clock		270 mA
+
+Ignition on, stereo off:	270 mA through switched +
+	     stereo on:		400 mA
+
+
+

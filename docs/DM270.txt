@@ -1,0 +1,121 @@
+
+23 Radio sense 0,6 V radio off, 7.71V radio on., yel cable to cassette deactivates.
+21 Radio Mute 0.6 radio off, 7.5 radio on.
+
+pin 2 = 5 v
+pin 3 = 2.2 v
+pin 4 = 5v
+pin 5 = 3.8 v ign. on, 0 volt ign off
+pin 11 = 5v
+
+
+               GND	1	28	P2,P3,P4,Set            vb	3v3
+cap. to gnd, rst?	2	27	P1,Scan,Seeka		c13	gnd
+   only Pull up      	3	26	VFD Strobe		c14	5v
+collector from Q  ?	4	25	Syn Data strobe		c15	b9
+ ign on     ?		5	24	Recal over diode	R	b8
+		K4	6	23      Radio Sense ?		a0	b7
+		K2	7	22      NC			a1	b6
+		K1	8	21	Radio Mute  ?		a2	b5
+		Stop	9	20	AM/FM			a3	b4
+		Stereo  10	19	TimeOfDay 50Hz		a4	b3
+		5vcc 	11	18	clk			a5	a15
+		P4,Seek 12	17	data			a6	a12
+		P2	13	16	GND			a7	a11
+		P1,P3	14	15	Set,Scan		b0	a10
+								b1	a9
+								b2	a8
+								b10	b15
+								3v3	b14
+								gnd	b13
+								5v	b12
+
+
+pin volt, empty socket:
+
+pin 1	0
+pin 2	0,   5 volt with proc.
+pin 3	4.97,  2.9 with proc
+pin 4	4.95
+pin 5	3.79 ign on
+pin 6	4.98, 0.45  when in pos
+pin 7	4.98, 0.45  in pos
+pin 8	4.98, 0.45  in pos
+pin 9	0   ign on & radio on,  5 volt ign off,
+pin 10	4.98
+pin 11	4.99
+pin 12	4.98
+pin 13	4.98
+pin 14	4.98
+
+pin 15	4.98
+pin 16	0
+pin 17	1.8  ign on,  0 ign off, 1.8, 4 sec recal
+pin 18	1.8  ign on,  0 ign off, 1.8 4 sec recal
+pin 19	0
+pin 20	0 ,   4.99 with cpu
+pin 21	6.1	0.5 with cassette  0 with power off
+pin 22	4.98
+pin 23	7.64     0 with cassette   0 with power off
+pin 24	4.98
+pin 25	1.8
+pin 26	0
+pin 27	0
+pin 28	0
+
+
+
+
+===============================================
+  map to stm32f411 black pill
+
+vb	x  gnd	x	3v3	x	P2P3P4Set	x
+c13     x  2?	x	G	x	P1ScanSeek	x
+c14     x  3?	x	5V	x	VFD Strobe	x
+c15     x  4?	x	B9	x	Sync Data strb	x
+r       x  ign.	x	B8	x	Recal		x
+a0      x  k4	x	B7	x	R Sense		x
+a1      x  k2	x	B6	x	?		x
+a2      x  k1	x	B5	x	R Mute		x
+a3      x  stop	x	B4	x	AM/FM		x
+a4      x  ster x	B3	x	TOD		x
+a5      x  5Vcc x 	a15	x	CLK		x
+a6      x  P4Se	x	a12	x	DAT		x
+a7      x  p2  	x	a11	x	GND		x
+b0      x  p1p3 x	a10	x	SetScan
+b1      x		a9	x
+b2      x		a8	x
+b10     x		b15	x
+3v3     x		b14	x
+G       x		b13	x
+5v      x		b12	x
+
+============ another pin map ==========
+pin 1	gnd	->	gnd (pin 39)
+pin 3	?	->	c14 (pin 3)
+pin 4	?	->	c15 (pin 4)
+pin 5   ign	-> 	a9
+pin 6	k4	->	a1  (pin 7)
+pin 7	k2	->	a2  (pin 8)
+pin 8	k1	->	a3  (pin 9)
+pin 9   stop	->	a4  (pin 10)
+pin 10	stereo	->	a5  (pin 11)
+pin 11  VCC	->	5v  (pin 20)
+pin 12  p4seek:in->	a6  (pin 12)
+pin 13  p2_in	->	a7  (pin 13)
+pin 14	p1p3_in ->	b0  (pin 14)
+
+pin 28	p2p3p4Set_out-> b1  (pin 15)
+pin 27  p1SeekScan_out->b2  (pin 16)
+pin 26	VFD strobe->	b9  (pin 37)
+pin 25  Syn strobe->	b8  (pin 36)
+pin 24  recall->	b15  (pin 35)
+pin 23  radio sense ->  a8  (pin 26) stm input over voltage divider
+pin 22	NC	->	b6  (pin 34)
+pin 21  radio mute  ->  b14 (pin 21) stm output over level shift transistor
+pin 20  AM/FM	->	b13 (pin 33)
+pin 19  TOD	->	b4  (pin 32)
+pin 18	serial clk ->   b3  (pin 31)
+pin 17	serial data ->  a15 (pin 30)
+pin 16  gnd
+pin 15  scan_set:in ->	a10 (pin 27)

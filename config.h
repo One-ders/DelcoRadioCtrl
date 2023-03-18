@@ -1,6 +1,7 @@
 
 #include_next "config.h"
 
+#define BOOT_MODE BOOT_MODE_SLOW 1
 
 
 #if 0
@@ -54,7 +55,7 @@
 #define CP1ScanSeek	GPIO_PIN(GPIO_PB,2) // no irq output
 #define VF_STROBE_PIN	GPIO_PIN(GPIO_PB,9) // no irq output
 #define SYN_STROBE_PIN  GPIO_PIN(GPIO_PB,8) // no irq output
-#define RECAL		GPIO_PIN(GPIO_PB,15) //  irq 15 was irq 7 conflict
+#define RECALL		GPIO_PIN(GPIO_PB,15) //  irq 15 was irq 7 conflict
 #define RSENSE		GPIO_PIN(GPIO_PA,8)// irq 8 , input
 #define RMUTE		GPIO_PIN(GPIO_PB,14) // no irq, output
 #define AM_FM		GPIO_PIN(GPIO_PB,13) // irq 13 was irq 5 conflict

@@ -1,0 +1,40 @@
+Original MCU          Always Hot    Ignition +        milliAmpere
+
+	Ignition off:	7 mA		0   mA
+	Ignition on:	7 mA		270 mA
+
+	Radio on:	15 mA		380 mA
+
+	Radio off:
+		five seconds delay: back to 7
+
+
+No MCU:
+	Ignition off:	3.4 mA		0  mA
+	Ignition on:	3.4 mA		270 mA
+
+	Radio on:	11 mA		380 mA
+	Radio off:	back to 3.4mA after 5 sec
+
+Conclusion: original mcu consumes about 3.6 mA
+
+STM32F411: 84Mhz cpu clock
+	Ignition off:	24 mA		0 mA
+	Ignition on:	24 mA
+
+	Radio on:	32 mA
+	Radio off:	back to 24 mA after 5 sec.
+
+STM32F411: 16Mhz cpu clock
+	Ignition off:   10 mA
+
+	Hsi (internal 16 Mhz clk) on
+	Hse (external 25 Mhz clk) off
+	PLL off
+	VSS low vol
+	lpds on
+			4,8 mA
+
+	4.8-3,4=1,4 mA -> stm
+
+	total is lower than original

@@ -67,7 +67,7 @@ struct ctrls_data {
 	struct device_handle *cp1scan_seek_dh;
 
 	/* other pins */
-	struct device_handle *recal_dh;
+	struct device_handle *recall_dh;
 	struct device_handle *am_fm_dh;
 
 
@@ -107,6 +107,16 @@ static struct drv_user *get_drv_user(void) {
 		}
 	}
 	return 0;
+}
+
+static int no_of_drv_users(void) {
+	int i,j=0;
+	for(i=0;i<MAX_USERS;i++) {
+		if (drv_user[i].in_use) {
+			j++;
+		}
+	}
+	return j;
 }
 
 static int wakeup_drv_users(struct ctrls_data *ctd,int ev) {
@@ -639,11 +649,11 @@ static int ctrls_timeout(struct device_handle *dh, int ev, void *dum) {
 }
 
 //
-static int recal_irq(struct device_handle *dh, int ev, void *dum) {
+static int recall_irq(struct device_handle *dh, int ev, void *dum) {
 	int pin_stat;
 	struct ctrls_data *ctd=&ctrls_data_0;
 
-	pindrv->ops->control(ctd->recal_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
+	pindrv->ops->control(ctd->recall_dh,GPIO_SENSE_PIN,&pin_stat,sizeof(pin_stat));
 
 	if (pin_stat==0) {
 		event[to_ix(ev_i)]=EVENT_VOL_PUSH;
@@ -666,6 +676,412 @@ static int am_fm_irq(struct device_handle *dh, int ev, void *dum) {
 	return 0;
 }
 
+
+static int remove_io(struct ctrls_data *ctd) {
+
+	if (timerdrv&&ctd->timer_dh) {
+		timerdrv->ops->close(ctd->timer_dh);
+		ctd->timer_dh=0;
+	}
+
+	if (pindrv) {
+		if (ctd->tw_pin1_dh) {
+			pindrv->ops->close(ctd->tw_pin1_dh);
+			ctd->tw_pin1_dh=0;
+		}
+		if (ctd->tw_pin2_dh) {
+			pindrv->ops->close(ctd->tw_pin2_dh);
+			ctd->tw_pin2_dh=0;
+		}
+		if (ctd->tw_pin4_dh) {
+			pindrv->ops->close(ctd->tw_pin4_dh);
+			ctd->tw_pin4_dh=0;
+		}
+		if (ctd->p4_seek_dh) {
+			pindrv->ops->close(ctd->p4_seek_dh);
+			ctd->p4_seek_dh=0;
+		}
+		if (ctd->p2_dh) {
+			pindrv->ops->close(ctd->p2_dh);
+			ctd->p2_dh=0;
+		}
+		if (ctd->p1p3_dh) {
+			pindrv->ops->close(ctd->p1p3_dh);
+			ctd->p1p3_dh=0;
+		}
+		if (ctd->set_scan_dh) {
+			pindrv->ops->close(ctd->set_scan_dh);
+			ctd->set_scan_dh=0;
+		}
+		if (ctd->cp2p3p4set_dh) {
+			pindrv->ops->close(ctd->cp2p3p4set_dh);
+			ctd->cp2p3p4set_dh=0;
+		}
+		if (ctd->cp1scan_seek_dh) {
+			pindrv->ops->close(ctd->cp1scan_seek_dh);
+			ctd->cp1scan_seek_dh=0;
+		}
+		if (ctd->recall_dh) {
+			pindrv->ops->close(ctd->recall_dh);
+			ctd->recall_dh=0;
+		}
+		if (ctd->am_fm_dh) {
+			pindrv->ops->close(ctd->am_fm_dh);
+			ctd->am_fm_dh=0;
+		}
+	}
+	return 0;
+}
+
+
+static int setup_io(struct ctrls_data *ctd) {
+	int flags;
+	int rc;
+	int tw_pin1;
+	int tw_pin2;
+	int tw_pin4;
+
+	int p4_seek_pin=P4Seek;
+	int p2_pin=P2;
+	int p1p3_pin=P1P3;
+	int set_scan_pin=SetScan;
+
+	int cp2p3p4set_pin=CP2P3P4Set;
+	int cp1scan_seek_pin=CP1ScanSeek;
+
+	int recall_pin=RECALL;
+	int am_fm_pin=AM_FM;
+
+
+	if (!pindrv) pindrv=driver_lookup(GPIO_DRV);
+	if (!pindrv) {
+//		sys_printf("DL: missing GPIO_DRV\n");
+		goto out1;
+	}
+
+	if (!timerdrv) timerdrv=driver_lookup(HR_TIMER);
+	if (!timerdrv) {
+		goto out1;
+	}
+
+	ctd->timer_dh=timerdrv->ops->open(timerdrv->instance,ctrls_timeout,(void *)ctd);
+	if (!ctd->timer_dh) {
+		goto out1;
+	}
+
+	ctd->tw_pin1_dh=pindrv->ops->open(pindrv->instance,tw_pin1_irq,(void *)ctd);
+	if (!ctd->tw_pin1_dh) {
+//		sys_printf("CTRLS: could not open GPIO_DRV\n");
+		goto out1;
+	}
+
+	/* open tw pin 2 */
+	ctd->tw_pin2_dh=pindrv->ops->open(pindrv->instance,tw_pin2_irq,(void *)ctd);
+	if (!ctd->tw_pin2_dh) {
+//		sys_printf("CTRLS: could not open second inst. GPIO_DRV\n");
+		goto out1;
+	}
+
+	/* open tw pin 4 */
+	ctd->tw_pin4_dh=pindrv->ops->open(pindrv->instance,tw_pin4_irq,(void *)ctd);
+	if (!ctd->tw_pin4_dh) {
+//		sys_printf("CTRLS: could not open third inst. GPIO_DRV\n");
+		goto out1;
+	}
+
+	if (ctd==&ctrls_data_0) {
+		tw_pin1=TUNE_WHEEL_1;
+		tw_pin2=TUNE_WHEEL_2;
+		tw_pin4=TUNE_WHEEL_4;
+	} else {
+//		sys_printf("CTRLS protocol driver: error no pin assigned for driver\n");
+		goto out1;
+	}
+
+	/* Program tune wheel pins to input and pull up */
+	rc=pindrv->ops->control(ctd->tw_pin1_dh,GPIO_BIND_PIN,&tw_pin1,sizeof(tw_pin1));
+	if (rc<0) {
+//		sys_printf("CTRLS protocol driver: failed to bind TW pin\n");
+		goto out1;
+	}
+
+	flags=GPIO_DIR(0,GPIO_INPUT);
+	flags=GPIO_DRIVE(flags,GPIO_PULLUP);
+	flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
+	flags=GPIO_IRQ_ENABLE(flags);
+	rc=pindrv->ops->control(ctd->tw_pin1_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+//		sys_printf("TW reader driver: pin_flags update failed\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->tw_pin2_dh,GPIO_BIND_PIN,&tw_pin2,sizeof(tw_pin2));
+	if (rc<0) {
+//		sys_printf("TW reader driver: tw pin 2 bind failed\n");
+		goto out1;
+	}
+
+#if 0
+	flags=GPIO_DIR(0,GPIO_INPUT);
+	flags=GPIO_DRIVE(flags,GPIO_PULLUP);
+	flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
+	flags=GPIO_IRQ_ENABLE(flags);
+#endif
+	rc=pindrv->ops->control(ctd->tw_pin2_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+//		sys_printf("TW reader driver: pin flags update failed\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->tw_pin4_dh,GPIO_BIND_PIN,&tw_pin4,sizeof(tw_pin4));
+	if (rc<0) {
+//		sys_printf("TW reader driver: tw pin 3 bind failed\n");
+		goto out1;
+	}
+
+#if 0
+	flags=GPIO_DIR(0,GPIO_INPUT);
+	flags=GPIO_DRIVE(flags,GPIO_PULLUP);
+	flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
+	flags=GPIO_IRQ_ENABLE(flags);
+#endif
+	rc=pindrv->ops->control(ctd->tw_pin4_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+//		sys_printf("TW reader driver: pin flags update failed\n");
+		goto out1;
+	}
+
+//	take care of Key matrix pins
+
+	ctd->p4_seek_dh=pindrv->ops->open(pindrv->instance,p4_seek_irq,(void *)ctd);
+	if (!ctd->p4_seek_dh) {
+//		sys_printf("CTRLS: could not open GPIO_DRV\n");
+		goto out1;
+	}
+
+	ctd->p2_dh=pindrv->ops->open(pindrv->instance,p2_irq,(void *)ctd);
+	if (!ctd->p2_dh) {
+//		sys_printf("CTRLS: could not open GPIO_DRV\n");
+		goto out1;
+	}
+
+	ctd->p1p3_dh=pindrv->ops->open(pindrv->instance,p1p3_irq,(void *)ctd);
+	if (!ctd->p1p3_dh) {
+//		sys_printf("CTRLS: could not open GPIO_DRV\n");
+		goto out1;
+	}
+
+	ctd->set_scan_dh=pindrv->ops->open(pindrv->instance,set_scan_irq,(void *)ctd);
+	if (!ctd->set_scan_dh) {
+//		sys_printf("CTRLS: could not open GPIO_DRV\n");
+		goto out1;
+	}
+
+	ctd->cp2p3p4set_dh=pindrv->ops->open(pindrv->instance,NULL,(void *)ctd);
+	if (!ctd->cp2p3p4set_dh) {
+//		sys_printf("CTRLS: could not open GPIO_DRV\n");
+		goto out1;
+	}
+
+	ctd->cp1scan_seek_dh=pindrv->ops->open(pindrv->instance,NULL,(void *)ctd);
+	if (!ctd->cp1scan_seek_dh) {
+//		sys_printf("CTRLS: could not open GPIO_DRV\n");
+		goto out1;
+	}
+
+
+	/* Program key matrix irq pins to input and pull up */
+	rc=pindrv->ops->control(ctd->p4_seek_dh,GPIO_BIND_PIN,&p4_seek_pin,sizeof(p4_seek_pin));
+	if (rc<0) {
+//		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->p2_dh,GPIO_BIND_PIN,&p2_pin,sizeof(p2_pin));
+	if (rc<0) {
+//		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->p1p3_dh,GPIO_BIND_PIN,&p1p3_pin,sizeof(p1p3_pin));
+	if (rc<0) {
+//		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->set_scan_dh,GPIO_BIND_PIN,&set_scan_pin,sizeof(set_scan_pin));
+	if (rc<0) {
+//		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
+		goto out1;
+	}
+
+
+#if 0
+	flags=GPIO_DIR(0,GPIO_INPUT);
+	flags=GPIO_DRIVE(flags,GPIO_PULLUP);
+	flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
+	flags=GPIO_IRQ_ENABLE(flags);
+#endif
+
+	rc=pindrv->ops->control(ctd->p4_seek_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+//		sys_printf("TW reader driver: pin_flags update failed\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->p2_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+//		sys_printf("TW reader driver: pin_flags update failed\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->p1p3_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+//		sys_printf("TW reader driver: pin_flags update failed\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->set_scan_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+//		sys_printf("TW reader driver: pin_flags update failed\n");
+		goto out1;
+	}
+
+
+
+	rc=pindrv->ops->control(ctd->cp2p3p4set_dh,GPIO_BIND_PIN,&cp2p3p4set_pin,sizeof(cp2p3p4set_pin));
+	if (rc<0) {
+//		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->cp1scan_seek_dh,GPIO_BIND_PIN,&cp1scan_seek_pin,sizeof(cp1scan_seek_pin));
+	if (rc<0) {
+//		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
+		goto out1;
+	}
+
+        flags=GPIO_DIR(0,GPIO_OUTPUT);
+        flags=GPIO_DRIVE(flags,GPIO_PUSHPULL);
+        flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
+        rc=pindrv->ops->control(ctd->cp2p3p4set_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+        if (rc<0) {
+//		sys_printf("CTRLS driver: cp2p3p4set flags update failed\n");
+                goto out1;
+        }
+
+        rc=pindrv->ops->control(ctd->cp1scan_seek_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+        if (rc<0) {
+//		sys_printf("CTRLS driver: cp1scan_seek flags update failed\n");
+		goto out1;
+        }
+
+	// the push of the wheels
+	ctd->recall_dh=pindrv->ops->open(pindrv->instance,recall_irq,(void *)ctd);
+	if (!ctd->recall_dh) {
+//		sys_printf("CTRLS: could not open GPIO_DRV\n");
+		goto out1;
+	}
+
+	ctd->am_fm_dh=pindrv->ops->open(pindrv->instance,am_fm_irq,(void *)ctd);
+	if (!ctd->am_fm_dh) {
+//		sys_printf("CTRLS: could not open GPIO_DRV\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->recall_dh,GPIO_BIND_PIN,&recall_pin,sizeof(recall_pin));
+	if (rc<0) {
+//		sys_printf("CTRLS protocol driver: failed to bind push button pin\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->am_fm_dh,GPIO_BIND_PIN,&am_fm_pin,sizeof(am_fm_pin));
+	if (rc<0) {
+//		sys_printf("CTRLS protocol driver: failed to bind push button pin\n");
+		goto out1;
+	}
+
+
+	flags=GPIO_DIR(0,GPIO_INPUT);
+	flags=GPIO_DRIVE(flags,GPIO_PULLUP);
+	flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
+	flags=GPIO_IRQ_ENABLE(flags);
+
+	rc=pindrv->ops->control(ctd->recall_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+//		sys_printf("PUSH WHEEL reader driver: pin_flags update failed\n");
+		goto out1;
+	}
+
+	rc=pindrv->ops->control(ctd->am_fm_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+	if (rc<0) {
+//		sys_printf("PUSH WHEEL reader driver: pin_flags update failed\n");
+		goto out1;
+	}
+
+	return 0;
+
+out1:
+
+	remove_io(ctd);
+
+#if 0
+	if (timerdrv&&ctd->timer_dh) {
+		timerdrv->ops->close(ctd->timer_dh);
+		ctd->timer_dh=0;
+	}
+	if (pindrv) {
+		if (ctd->tw_pin1_dh) {
+			pindrv->ops->close(ctd->tw_pin1_dh);
+			ctd->tw_pin1_dh=0;
+		}
+		if (ctd->tw_pin2_dh) {
+			pindrv->ops->close(ctd->tw_pin2_dh);
+			ctd->tw_pin2_dh=0;
+		}
+		if (ctd->tw_pin4_dh) {
+			pindrv->ops->close(ctd->tw_pin4_dh);
+			ctd->tw_pin4_dh=0;
+		}
+		if (ctd->p4_seek_dh) {
+			pindrv->ops->close(ctd->p4_seek_dh);
+			ctd->p4_seek_dh=0;
+		}
+		if (ctd->p2_dh) {
+			pindrv->ops->close(ctd->p2_dh);
+			ctd->p2_dh=0;
+		}
+		if (ctd->p1p3_dh) {
+			pindrv->ops->close(ctd->p1p3_dh);
+			ctd->p1p3_dh=0;
+		}
+		if (ctd->set_scan_dh) {
+			pindrv->ops->close(ctd->set_scan_dh);
+			ctd->set_scan_dh=0;
+		}
+		if (ctd->cp2p3p4set_dh) {
+			pindrv->ops->close(ctd->cp2p3p4set_dh);
+			ctd->cp2p3p4set_dh=0;
+		}
+		if (ctd->cp1scan_seek_dh) {
+			pindrv->ops->close(ctd->cp1scan_seek_dh);
+			ctd->cp1scan_seek_dh=0;
+		}
+		if (ctd->recall_dh) {
+			pindrv->ops->close(ctd->recall_dh);
+			ctd->recall_dh=0;
+		}
+		if (ctd->am_fm_dh) {
+			pindrv->ops->close(ctd->am_fm_dh);
+			ctd->am_fm_dh=0;
+		}
+	}
+#endif
+
+	return -1;
+}
+
+
 /*****  Driver API *****/
 
 static struct device_handle *ctrls_open(void *inst, DRV_CBH cb, void *udata) {
@@ -677,18 +1093,34 @@ static struct device_handle *ctrls_open(void *inst, DRV_CBH cb, void *udata) {
 	u->callback=cb;
 	u->userdata=udata;
 	u->events=0;
-	timerdrv->ops->control(ctd->timer_dh,HR_TIMER_SET,&sweep_step_time,sizeof(sweep_step_time));
+	if (no_of_drv_users()==1) {
+		setup_io(inst);
+	}
+	if (ctd->timer_dh) {
+		timerdrv->ops->control(ctd->timer_dh,HR_TIMER_SET,&sweep_step_time,sizeof(sweep_step_time));
+
+	} else {
+		if (u) {
+			u->in_use=0;
+			u->ctrls_data=0;
+		}
+		return 0;
+	}
 	return &u->dh;
 }
 
 static int ctrls_close(struct device_handle *dh) {
 	struct drv_user *u=(struct drv_user *)dh;
+	struct ctrls_data *ctd=u->ctrls_data;
 	if (!u) {
 		return 0;
 	}
 	if (u) {
 		u->in_use=0;
 		u->ctrls_data=0;
+	}
+	if (no_of_drv_users()==0) {
+		remove_io(ctd);
 	}
 	return 0;
 }
@@ -740,306 +1172,6 @@ static int ctrls_init(void *inst) {
 }
 
 static int ctrls_start(void *inst) {
-	struct ctrls_data *ctd=(struct ctrls_data *)inst;
-	int flags;
-	int rc;
-	int tw_pin1;
-	int tw_pin2;
-	int tw_pin4;
-
-	int p4_seek_pin=P4Seek;
-	int p2_pin=P2;
-	int p1p3_pin=P1P3;
-	int set_scan_pin=SetScan;
-
-	int cp2p3p4set_pin=CP2P3P4Set;
-	int cp1scan_seek_pin=CP1ScanSeek;
-
-	int recal_pin=RECAL;
-	int am_fm_pin=AM_FM;
-
-
-	if (!pindrv) pindrv=driver_lookup(GPIO_DRV);
-	if (!pindrv) {
-		sys_printf("DL: missing GPIO_DRV\n");
-		goto out1;
-	}
-
-	if (!timerdrv) timerdrv=driver_lookup(HR_TIMER);
-	if (!timerdrv) {
-		goto out1;
-	}
-
-	ctd->timer_dh=timerdrv->ops->open(timerdrv->instance,ctrls_timeout,(void *)ctd);
-	if (!ctd->timer_dh) {
-		goto out1;
-	}
-
-	ctd->tw_pin1_dh=pindrv->ops->open(pindrv->instance,tw_pin1_irq,(void *)ctd);
-	if (!ctd->tw_pin1_dh) {
-		sys_printf("CTRLS: could not open GPIO_DRV\n");
-		goto out1;
-	}
-
-	/* open tw pin 2 */
-	ctd->tw_pin2_dh=pindrv->ops->open(pindrv->instance,tw_pin2_irq,(void *)ctd);
-	if (!ctd->tw_pin2_dh) {
-		sys_printf("CTRLS: could not open second inst. GPIO_DRV\n");
-		goto out2;
-	}
-
-	/* open tw pin 4 */
-	ctd->tw_pin4_dh=pindrv->ops->open(pindrv->instance,tw_pin4_irq,(void *)ctd);
-	if (!ctd->tw_pin4_dh) {
-		sys_printf("CTRLS: could not open third inst. GPIO_DRV\n");
-		goto out2;
-	}
-
-	if (ctd==&ctrls_data_0) {
-		tw_pin1=TUNE_WHEEL_1;
-		tw_pin2=TUNE_WHEEL_2;
-		tw_pin4=TUNE_WHEEL_4;
-	} else {
-		sys_printf("CTRLS protocol driver: error no pin assigned for driver\n");
-		goto out4;
-	}
-
-	/* Program tune wheel pins to input and pull up */
-	rc=pindrv->ops->control(ctd->tw_pin1_dh,GPIO_BIND_PIN,&tw_pin1,sizeof(tw_pin1));
-	if (rc<0) {
-		sys_printf("CTRLS protocol driver: failed to bind TW pin\n");
-		goto out4;
-	}
-
-	flags=GPIO_DIR(0,GPIO_INPUT);
-	flags=GPIO_DRIVE(flags,GPIO_PULLUP);
-	flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
-	flags=GPIO_IRQ_ENABLE(flags);
-	rc=pindrv->ops->control(ctd->tw_pin1_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-	if (rc<0) {
-		sys_printf("TW reader driver: pin_flags update failed\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->tw_pin2_dh,GPIO_BIND_PIN,&tw_pin2,sizeof(tw_pin2));
-	if (rc<0) {
-		sys_printf("TW reader driver: tw pin 2 bind failed\n");
-		goto out4;
-	}
-
-#if 0
-	flags=GPIO_DIR(0,GPIO_INPUT);
-	flags=GPIO_DRIVE(flags,GPIO_PULLUP);
-	flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
-	flags=GPIO_IRQ_ENABLE(flags);
-#endif
-	rc=pindrv->ops->control(ctd->tw_pin2_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-	if (rc<0) {
-		sys_printf("TW reader driver: pin flags update failed\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->tw_pin4_dh,GPIO_BIND_PIN,&tw_pin4,sizeof(tw_pin4));
-	if (rc<0) {
-		sys_printf("TW reader driver: tw pin 3 bind failed\n");
-		goto out4;
-	}
-
-#if 0
-	flags=GPIO_DIR(0,GPIO_INPUT);
-	flags=GPIO_DRIVE(flags,GPIO_PULLUP);
-	flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
-	flags=GPIO_IRQ_ENABLE(flags);
-#endif
-	rc=pindrv->ops->control(ctd->tw_pin4_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-	if (rc<0) {
-		sys_printf("TW reader driver: pin flags update failed\n");
-		goto out4;
-	}
-
-	sys_printf("TW protocol driver: Started\n");
-
-
-//	take care of Key matrix pins
-
-	ctd->p4_seek_dh=pindrv->ops->open(pindrv->instance,p4_seek_irq,(void *)ctd);
-	if (!ctd->p4_seek_dh) {
-		sys_printf("CTRLS: could not open GPIO_DRV\n");
-		goto out4;
-	}
-
-	ctd->p2_dh=pindrv->ops->open(pindrv->instance,p2_irq,(void *)ctd);
-	if (!ctd->p2_dh) {
-		sys_printf("CTRLS: could not open GPIO_DRV\n");
-		goto out4;
-	}
-
-	ctd->p1p3_dh=pindrv->ops->open(pindrv->instance,p1p3_irq,(void *)ctd);
-	if (!ctd->p1p3_dh) {
-		sys_printf("CTRLS: could not open GPIO_DRV\n");
-		goto out4;
-	}
-
-	ctd->set_scan_dh=pindrv->ops->open(pindrv->instance,set_scan_irq,(void *)ctd);
-	if (!ctd->set_scan_dh) {
-		sys_printf("CTRLS: could not open GPIO_DRV\n");
-		goto out4;
-	}
-
-	ctd->cp2p3p4set_dh=pindrv->ops->open(pindrv->instance,NULL,(void *)ctd);
-	if (!ctd->cp2p3p4set_dh) {
-		sys_printf("CTRLS: could not open GPIO_DRV\n");
-		goto out4;
-	}
-
-	ctd->cp1scan_seek_dh=pindrv->ops->open(pindrv->instance,NULL,(void *)ctd);
-	if (!ctd->cp1scan_seek_dh) {
-		sys_printf("CTRLS: could not open GPIO_DRV\n");
-		goto out4;
-	}
-
-
-	/* Program key matrix irq pins to input and pull up */
-	rc=pindrv->ops->control(ctd->p4_seek_dh,GPIO_BIND_PIN,&p4_seek_pin,sizeof(p4_seek_pin));
-	if (rc<0) {
-		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->p2_dh,GPIO_BIND_PIN,&p2_pin,sizeof(p2_pin));
-	if (rc<0) {
-		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->p1p3_dh,GPIO_BIND_PIN,&p1p3_pin,sizeof(p1p3_pin));
-	if (rc<0) {
-		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->set_scan_dh,GPIO_BIND_PIN,&set_scan_pin,sizeof(set_scan_pin));
-	if (rc<0) {
-		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
-		goto out4;
-	}
-
-
-#if 0
-	flags=GPIO_DIR(0,GPIO_INPUT);
-	flags=GPIO_DRIVE(flags,GPIO_PULLUP);
-	flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
-	flags=GPIO_IRQ_ENABLE(flags);
-#endif
-
-	rc=pindrv->ops->control(ctd->p4_seek_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-	if (rc<0) {
-		sys_printf("TW reader driver: pin_flags update failed\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->p2_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-	if (rc<0) {
-		sys_printf("TW reader driver: pin_flags update failed\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->p1p3_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-	if (rc<0) {
-		sys_printf("TW reader driver: pin_flags update failed\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->set_scan_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-	if (rc<0) {
-		sys_printf("TW reader driver: pin_flags update failed\n");
-		goto out4;
-	}
-
-
-
-	rc=pindrv->ops->control(ctd->cp2p3p4set_dh,GPIO_BIND_PIN,&cp2p3p4set_pin,sizeof(cp2p3p4set_pin));
-	if (rc<0) {
-		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->cp1scan_seek_dh,GPIO_BIND_PIN,&cp1scan_seek_pin,sizeof(cp1scan_seek_pin));
-	if (rc<0) {
-		sys_printf("CTRLS protocol driver: failed to bind KM pin\n");
-		goto out4;
-	}
-
-        flags=GPIO_DIR(0,GPIO_OUTPUT);
-        flags=GPIO_DRIVE(flags,GPIO_PUSHPULL);
-        flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
-        rc=pindrv->ops->control(ctd->cp2p3p4set_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-        if (rc<0) {
-                sys_printf("CTRLS driver: cp2p3p4set flags update failed\n");
-                goto out4;
-        }
-
-        rc=pindrv->ops->control(ctd->cp1scan_seek_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-        if (rc<0) {
-                sys_printf("CTRLS driver: cp1scan_seek flags update failed\n");
-                goto out4;
-        }
-
-	// the push of the wheels
-	ctd->recal_dh=pindrv->ops->open(pindrv->instance,recal_irq,(void *)ctd);
-	if (!ctd->recal_dh) {
-		sys_printf("CTRLS: could not open GPIO_DRV\n");
-		goto out4;
-	}
-
-	ctd->am_fm_dh=pindrv->ops->open(pindrv->instance,am_fm_irq,(void *)ctd);
-	if (!ctd->am_fm_dh) {
-		sys_printf("CTRLS: could not open GPIO_DRV\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->recal_dh,GPIO_BIND_PIN,&recal_pin,sizeof(recal_pin));
-	if (rc<0) {
-		sys_printf("CTRLS protocol driver: failed to bind push button pin\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->am_fm_dh,GPIO_BIND_PIN,&am_fm_pin,sizeof(am_fm_pin));
-	if (rc<0) {
-		sys_printf("CTRLS protocol driver: failed to bind push button pin\n");
-		goto out4;
-	}
-
-
-	flags=GPIO_DIR(0,GPIO_INPUT);
-	flags=GPIO_DRIVE(flags,GPIO_PULLUP);
-	flags=GPIO_SPEED(flags,GPIO_SPEED_MEDIUM);
-	flags=GPIO_IRQ_ENABLE(flags);
-
-	rc=pindrv->ops->control(ctd->recal_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-	if (rc<0) {
-		sys_printf("PUSH WHEEL reader driver: pin_flags update failed\n");
-		goto out4;
-	}
-
-	rc=pindrv->ops->control(ctd->am_fm_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
-	if (rc<0) {
-		sys_printf("PUSH WHEEL reader driver: pin_flags update failed\n");
-		goto out4;
-	}
-
-	return 0;
-
-out4:
-	sys_printf("TW: failed to bind pin to GPIO\n");
-
-	pindrv->ops->close(ctd->tw_pin1_dh);
-	pindrv->ops->close(ctd->tw_pin2_dh);
-	pindrv->ops->close(ctd->tw_pin4_dh);
-
-out2:
-
-out1:
 	return 0;
 }
 

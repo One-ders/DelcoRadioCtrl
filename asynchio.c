@@ -144,7 +144,11 @@ int do_event(void) {
 		evloop_tim=timeout;
 	}
 
-	rc=io_select(nfds+1,&lrfds,&lwfds,&lstfds,&evloop_tim);
+	if (evloop_tim==0) {
+		rc=io_select(nfds+1,&lrfds,&lwfds,&lstfds,0);
+	} else {
+		rc=io_select(nfds+1,&lrfds,&lwfds,&lstfds,&evloop_tim);
+	}
 	if (rc<0) return rc;
 	if (rc==0) {
 		if (timer.rdhandler) {

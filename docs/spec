@@ -1,0 +1,28 @@
+
+1. at battery connect.
+	ignition on
+		radio on
+
+		radio off
+
+	ignition off
+
+2. vol push: toggle clock vs. current audio mode (radio, vs AU)
+
+3. Tune push: toggle FM radio vs. Bluetooth
+
+4. set button lites 'set' for 4-5 sec.
+	radio on:
+		presets stores current radio channel.
+		seek&scan modify time
+	radio off:
+		seek&scan modify time
+	bluetooth mode :
+		?
+		seek&scan modify time
+
+5. seek&scann in radio mode,
+	seek - seek up
+	scan - seek down
+
+

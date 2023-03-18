@@ -49,7 +49,7 @@ void put_timer_obj(struct Timer_obj *tobj) {
 	int i=tobj-timers;
 
 	if (!tobj) {
-		printf("release of null timer\n");
+//		printf("release of null timer\n");
 		return;
 	}
 //	printf("put timer obj %d\n", i);
@@ -61,7 +61,6 @@ void put_timer_obj(struct Timer_obj *tobj) {
 		printf("release of idle timer\n");
 		return;
 	}
-//	timer[i]=tobj;
 	tmask|=1<<i;
 }
 
