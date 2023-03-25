@@ -286,6 +286,16 @@ static int tstats_control(struct device_handle *dh, int cmd, void *arg, int size
         return -1;
 }
 
+static int tstats_update_clk(void *inst,unsigned int hz) {
+	struct tstats_data *tsd=(struct tstats_data *)inst;
+	int mute=0;
+	if (hz<84000000) {
+		pindrv->ops->control(
+			tsd->mute_pin_dh,
+			GPIO_SET_PIN,
+			&mute, sizeof(mute));
+	}
+}
 
 static int tstats_init(void *inst) {
 	return 0;
@@ -420,6 +430,7 @@ static struct driver_ops tstats_ops = {
 	tstats_control,
 	tstats_init,
 	tstats_start,
+	tstats_update_clk
 };
 
 static struct driver tstats_drv = {

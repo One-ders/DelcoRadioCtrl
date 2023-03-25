@@ -1,5 +1,15 @@
 
-23 Radio sense 0,6 V radio off, 7.71V radio on., yel cable to cassette deactivates.
+Delco micro controller DM270
+----------------------------
+
+Pin functions of the original uController DM270, I have no
+clue what it is...
+
+
+Pins and some voltages
+___
+23 Radio sense 0,6 V radio off, 7.71V radio on.,
+		yel cable to cassette deactivates.
 21 Radio Mute 0.6 radio off, 7.5 radio on.
 
 pin 2 = 5 v
@@ -8,6 +18,9 @@ pin 4 = 5v
 pin 5 = 3.8 v ign. on, 0 volt ign off
 pin 11 = 5v
 
+
+			DM270					BLACKPILL
+			=====					=========
 
                GND	1	28	P2,P3,P4,Set            vb	3v3
 cap. to gnd, rst?	2	27	P1,Scan,Seeka		c13	gnd
@@ -69,35 +82,35 @@ pin 28	0
 ===============================================
   map to stm32f411 black pill
 
-vb	x  gnd	x	3v3	x	P2P3P4Set	x
-c13     x  2?	x	G	x	P1ScanSeek	x
-c14     x  3?	x	5V	x	VFD Strobe	x
-c15     x  4?	x	B9	x	Sync Data strb	x
-r       x  ign.	x	B8	x	Recal		x
-a0      x  k4	x	B7	x	R Sense		x
-a1      x  k2	x	B6	x	?		x
-a2      x  k1	x	B5	x	R Mute		x
-a3      x  stop	x	B4	x	AM/FM		x
-a4      x  ster x	B3	x	TOD		x
-a5      x  5Vcc x 	a15	x	CLK		x
-a6      x  P4Se	x	a12	x	DAT		x
-a7      x  p2  	x	a11	x	GND		x
-b0      x  p1p3 x	a10	x	SetScan
-b1      x		a9	x
-b2      x		a8	x
-b10     x		b15	x
-3v3     x		b14	x
-G       x		b13	x
-5v      x		b12	x
+vb	1  gnd	1	3v3	40	P2P3P4Set	28
+c13     2  2?	2	G	39	P1ScanSeek	27
+c14     3  3?	3	5V	38	VFD Strobe	26
+c15     4  4?	4	B9	37	Sync Data strb	25
+r       5  ign.	5	B8	36	Recal		24
+a0      6  k4	6	B7	35	R Sense		23
+a1      7  k2	7	B6	34	?		22
+a2      8  k1	8	B5	33	R Mute		21
+a3      9  stop	9	B4	32	AM/FM		20
+a4      10 ster 10	B3	31	TOD		19
+a5      11 5Vcc 11	a15	30	CLK		18
+a6      12 P4Se	12	a12	29	DAT		17
+a7      13 p2  	13	a11	28	GND		16
+b0      14 p1p3 14	a10	27	SetScan		15
+b1      15		a9	26
+b2      16		a8	25
+b10     17		b15	24
+3v3     18		b14	23
+G       19		b13	22
+5v      20		b12	21
 
 ============ another pin map ==========
 pin 1	gnd	->	gnd (pin 39)
 pin 3	?	->	c14 (pin 3)
 pin 4	?	->	c15 (pin 4)
-pin 5   ign	-> 	a9
+pin 5   ign	-> 	a9  (pin 26)
 pin 6	k4	->	a1  (pin 7)
-pin 7	k2	->	a2  (pin 8)
-pin 8	k1	->	a3  (pin 9)
+pin 7	k2	->	a11 (pin 28)
+pin 8	k1	->	a12 (pin 29)
 pin 9   stop	->	a4  (pin 10)
 pin 10	stereo	->	a5  (pin 11)
 pin 11  VCC	->	5v  (pin 20)
@@ -109,8 +122,8 @@ pin 28	p2p3p4Set_out-> b1  (pin 15)
 pin 27  p1SeekScan_out->b2  (pin 16)
 pin 26	VFD strobe->	b9  (pin 37)
 pin 25  Syn strobe->	b8  (pin 36)
-pin 24  recall->	b15  (pin 35)
-pin 23  radio sense ->  a8  (pin 26) stm input over voltage divider
+pin 24  recall->	b15 (pin 24)
+pin 23  radio sense ->  a8  (pin 25) stm input over voltage divider
 pin 22	NC	->	b6  (pin 34)
 pin 21  radio mute  ->  b14 (pin 21) stm output over level shift transistor
 pin 20  AM/FM	->	b13 (pin 33)
@@ -119,3 +132,96 @@ pin 18	serial clk ->   b3  (pin 31)
 pin 17	serial data ->  a15 (pin 30)
 pin 16  gnd
 pin 15  scan_set:in ->	a10 (pin 27)
+
+
+// stm pins assignments
+
+pin1	vbat	nc
+pin2	c13	nc (blue led)
+pin3	c14	pin 3 dm270 (no func)
+pin4	c15	pin 4 dm270 (a collector some func)
+pin5	reset 	nc
+pin6	A0	nc
+pin7	A1	pin6	k4
+pin8	A2	nc	usart tx, was k2
+pin9	A3	nc	usart rx, was k1
+pin10	A4	pin9	stop
+pin11	A5	pin10	stereo
+pin12	A6	pin12	seek_in
+pin13	A7	pin13	p2_in
+pin14	b0	pin14	p1_p3_in
+pin15	b1	pin28	p2p3p4Set_out
+pin16	b2	pin27	p1SeekScan_out
+pin17	b10	nc
+pin18	3.3v	nc
+pin19	Gnd	nc
+pin20	5.0v	pin11	5vcc
+=======
+pin21	b12	nc
+pin22	b13	pin20	am/fm_in
+pin23	b14	pin21   radio mute, out over level shifter
+pin24	b15	pin24	recall_in
+pin25	a8	pin23	rsense_in, over vdivider
+pin26	a9	pin5	ignition_in
+pin27	a10	pin15	SetScan_in
+pin28	a11	pin8	K1 in, was nc
+pin29	a12	pin7	K2 in, was nc
+pin30	a15	pin17	sda out
+pin31	b3	pin18	scl out
+pin32	b4	pin19	TOD in
+pin33	b5	nc
+pin34	b6	pin22	NC
+pin35	b7	nc
+pin36	b8	pin25   SYN strobe out
+pin37	b9	pin26	VFD strobe out
+pin38	5v	nc, feed through pin20
+pin39	gnd	pin1
+pin40	3.3v	nc
+
+Free pins:
+	b5, b7, b10, b12
+
+Irq map:
+
+// Irq pins: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+//           B  A  B  B  B  A  A  A  A  A   A   A   A   B   C   B
+
+b0	p1_p3
+a1	k4
+x2	free
+x3	free
+b4	tod
+a5	stereo
+a6	p4seek
+a7	p2
+a8	rsense
+a9	ignition
+a10	setscan
+a11	k1
+a12	k2
+b13	AM_FM
+c14	free?
+b15	recall
+
+
+free up some irq pins by reassigning
+a2, a3 -> a11, a12, use usart for debug, block usb
+b2 (cp1scanseek) to b7
+b3 (clk)	 to b5
+
+Free pins:
+b2,b3,c14 free for irq input
+
+b6,b10,b12,c15 free for no irq input or output
+
+Pin connected to DM270 carrier
+
+Pin B6 -> DM270-Pin 22
+Pin C14 -> DM270-Pin 3
+Pin C15 -> DM270-Pin 4
+
+Pins Not connected on the carrier, will need patch cables
+Pin B2 is pin 16
+pin B3 is pin 32
+pin B10 is pin 17
+pin B12 is pin 21

@@ -239,6 +239,7 @@ static int strobe_off(struct dl_data *dld) {
 static int strobe=0;
 
 static int dl_timeout(struct device_handle *dh, int ev, void *dum) {
+	int rc;
 	struct dl_data *dld=(struct dl_data *)dum;
 
 	if (up) {
@@ -268,18 +269,25 @@ static int dl_timeout(struct device_handle *dh, int ev, void *dum) {
 			}
 		}
 	}
-	timerdrv->ops->control(dld->timer_dh,HR_TIMER_SET,&clkHalfPeriod,sizeof(clkHalfPeriod));
+	rc=timerdrv->ops->control(dld->timer_dh,HR_TIMER_SET,&clkHalfPeriod,sizeof(clkHalfPeriod));
+	if (rc<0) {
+		sys_printf("dl_timeout: error from HR_TIMER_SET\n");
+	}
 
 	return 0;
 }
 
 static void put_out_bit(struct dl_data *dld) {
+	int rc;
 	clk_down(dld);
 	up=1;
 	data_out(dld, current_bit_val?1:0);
 	current_bit_no--;
 	current_bit_val=barr[current_bit_no/8]&(1<<(current_bit_no%8));
-	timerdrv->ops->control(dld->timer_dh,HR_TIMER_SET,&clkHalfPeriod,sizeof(clkHalfPeriod));
+	rc=timerdrv->ops->control(dld->timer_dh,HR_TIMER_SET,&clkHalfPeriod,sizeof(clkHalfPeriod));
+	if (rc<0) {
+		sys_printf("dl_put_out_bit: error from HR_TIMER_SET\n");
+	}
 }
 
 

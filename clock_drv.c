@@ -70,7 +70,6 @@ static struct device_handle *clock_open(void *inst, DRV_CBH cb, void *udata) {
 //	u->events=0;
 	u->events=EV_STATE;
 
-	sys_printf("clock_open: tod clock open rc  %x\n", &u->dh);
 	return &u->dh;
 }
 
@@ -81,7 +80,6 @@ static int clock_close(struct device_handle *dh) {
 		return 0;
 	}
 	if (u) {
-		sys_printf("clock_close: tod clock close %x\n", dh);
 		u->in_use=0;
 		u->clock_data=0;
 	}

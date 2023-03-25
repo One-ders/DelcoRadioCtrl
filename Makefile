@@ -17,7 +17,7 @@ include $(KREL)/Makefile
 
 DRIVERS=stddrv.o
 DRIVERS+=gpio_drv.o
-#DRIVERS+=usart_drv.o
+DRIVERS+=usart_drv.o
 DRIVERS+=led_drv.o
 DRIVERS+=pwr_mgr_drv.o
 #DRIVERS+=usb_core_drv.o

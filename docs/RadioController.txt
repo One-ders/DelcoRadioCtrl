@@ -6,11 +6,13 @@ VF driver DM179 could be a  rebranded OKI MSC1149-XX
 Quad Analog switch DM188, pin out eq to maxim MAX4620
 
 
-funktioner:
+functions:
 
-	Klocka, implementera som driver. assign a pin for 50hz time of day tone 	from  DM188. Pin count down from  60x50 = 3000, to increment, minutes		when zero, then reload.
+	Klocka, implementera as a driver. assign a pin for 50hz time of day
+	from  DM188. on irq, count down from  60x50 = 3000, to increment,
+	minutes	when zero, then reload.
 
-	User can read current time (hours:minutes) from driver API, can also put	the socket into select mask to get released when time changes.
+	User can read current time (hours:minutes) from driver API, can also put	the dev descritor into select mask to get released when time changes.
 
 	User can write hours:minutes to update time in driver.
 
@@ -19,14 +21,14 @@ funktioner:
 
 	set pushed when clock is showing, can be used to adjust clock
 
-	set times out after 5 sec or toggle push
+	set times out after 4 sec of toggle push
 
 	pushing recall with iginition off, lights up clock for 4 Sec, Set Scan &Seek works during the time.
 
 
 	Radio:
 		seek: search up
-		scan+seek: search backward
+		scan: search backward
 
 		Push tune, to activate BT module (or answer call)
 
@@ -39,11 +41,8 @@ funktioner:
 
 
 
-Standby current ignition off: 7 mA
+Standby current ignition off:	7 mA   (orig)	5mA (new ctrl)
 	peek at clock		270 mA
 
 Ignition on, stereo off:	270 mA through switched +
 	     stereo on:		400 mA
-
-
-

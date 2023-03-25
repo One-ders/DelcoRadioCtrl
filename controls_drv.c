@@ -578,6 +578,7 @@ static int set_scan_irq(struct device_handle *dh, int ev, void *dum) {
 }
 
 static int ctrls_timeout(struct device_handle *dh, int ev, void *dum) {
+	int rc;
 	struct ctrls_data *ctd=(struct ctrls_data *)dum;
 
 	sweep_cnt++;
@@ -644,7 +645,10 @@ static int ctrls_timeout(struct device_handle *dh, int ev, void *dum) {
 	if (pb_tfunc) {
 		pb_tfunc(pb_tdata,sweep_cnt);
 	}
-	timerdrv->ops->control(ctd->timer_dh,HR_TIMER_SET,&sweep_step_time,sizeof(sweep_step_time));
+	rc=timerdrv->ops->control(ctd->timer_dh,HR_TIMER_SET,&sweep_step_time,sizeof(sweep_step_time));
+	if (rc<0) {
+		sys_printf("got error from hr_timer_set, in ctrls timeout\n");
+	}
 	return 0;
 }
 
@@ -1025,59 +1029,6 @@ out1:
 
 	remove_io(ctd);
 
-#if 0
-	if (timerdrv&&ctd->timer_dh) {
-		timerdrv->ops->close(ctd->timer_dh);
-		ctd->timer_dh=0;
-	}
-	if (pindrv) {
-		if (ctd->tw_pin1_dh) {
-			pindrv->ops->close(ctd->tw_pin1_dh);
-			ctd->tw_pin1_dh=0;
-		}
-		if (ctd->tw_pin2_dh) {
-			pindrv->ops->close(ctd->tw_pin2_dh);
-			ctd->tw_pin2_dh=0;
-		}
-		if (ctd->tw_pin4_dh) {
-			pindrv->ops->close(ctd->tw_pin4_dh);
-			ctd->tw_pin4_dh=0;
-		}
-		if (ctd->p4_seek_dh) {
-			pindrv->ops->close(ctd->p4_seek_dh);
-			ctd->p4_seek_dh=0;
-		}
-		if (ctd->p2_dh) {
-			pindrv->ops->close(ctd->p2_dh);
-			ctd->p2_dh=0;
-		}
-		if (ctd->p1p3_dh) {
-			pindrv->ops->close(ctd->p1p3_dh);
-			ctd->p1p3_dh=0;
-		}
-		if (ctd->set_scan_dh) {
-			pindrv->ops->close(ctd->set_scan_dh);
-			ctd->set_scan_dh=0;
-		}
-		if (ctd->cp2p3p4set_dh) {
-			pindrv->ops->close(ctd->cp2p3p4set_dh);
-			ctd->cp2p3p4set_dh=0;
-		}
-		if (ctd->cp1scan_seek_dh) {
-			pindrv->ops->close(ctd->cp1scan_seek_dh);
-			ctd->cp1scan_seek_dh=0;
-		}
-		if (ctd->recall_dh) {
-			pindrv->ops->close(ctd->recall_dh);
-			ctd->recall_dh=0;
-		}
-		if (ctd->am_fm_dh) {
-			pindrv->ops->close(ctd->am_fm_dh);
-			ctd->am_fm_dh=0;
-		}
-	}
-#endif
-
 	return -1;
 }
 
@@ -1097,8 +1048,11 @@ static struct device_handle *ctrls_open(void *inst, DRV_CBH cb, void *udata) {
 		setup_io(inst);
 	}
 	if (ctd->timer_dh) {
-		timerdrv->ops->control(ctd->timer_dh,HR_TIMER_SET,&sweep_step_time,sizeof(sweep_step_time));
-
+		int rc;
+		rc=timerdrv->ops->control(ctd->timer_dh,HR_TIMER_SET,&sweep_step_time,sizeof(sweep_step_time));
+		if (rc<0) {
+			sys_printf("ctrls_open: error from hr_timer_set\n");
+		}
 	} else {
 		if (u) {
 			u->in_use=0;
@@ -1119,6 +1073,7 @@ static int ctrls_close(struct device_handle *dh) {
 		u->in_use=0;
 		u->ctrls_data=0;
 	}
+
 	if (no_of_drv_users()==0) {
 		remove_io(ctd);
 	}

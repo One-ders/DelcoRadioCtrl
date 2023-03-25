@@ -2,9 +2,10 @@
 
 struct system_params system_params = {
 //.sys_console_dev="dumdum",
-.sys_console_dev="usb_serial0",
-.user_console_dev="usb_serial0",
-//.user_console_dev="usart0",
+//.sys_console_dev="usb_serial0",
+.sys_console_dev="usart0",
+//.user_console_dev="usb_serial0",
+.user_console_dev="usart0",
 //.user_console_dev="dumdum",
 // POWER_MODE_SLOW_CLK = 16 Mhz  -> 6mA
 // + WFI (wait for interrupt)
