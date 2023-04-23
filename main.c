@@ -411,6 +411,9 @@ static int update_vfd() {
 	}
 
 	rc=io_write(myfd, buf, sizeof(buf));
+	if (rc<0) {
+		printf("error from update vfd: %d\n",rc);
+	}
 //	printf("update vfd return %d\n",rc);
 
 	return 0;
@@ -471,6 +474,9 @@ static int update_syn() {
 	buf[3]=0x03;
 
 	rc=io_write(myfd, buf, 4);
+	if (rc<0) {
+		printf("error from write to syn: %d\n", rc);
+	}
 #if 0
 	printf("rc %d syn str %02x, %02x, %02x, %02x\n", rc, buf[0], buf[1], buf[2], buf[3]);
 #endif
@@ -497,6 +503,39 @@ static int unmute_radio() {
 	}
 	return 0;
 }
+
+static int audio_radio() {
+	int off=0;
+	int on=1;
+	int rc;
+
+	rc=io_control(tstats_fd, SET_BT_MUTE, &on, sizeof(on));
+	if (rc<0) {
+		printf("error from bt mute\n");
+	}
+	rc=io_control(tstats_fd, SET_RADIO_MUTE, &off, sizeof(off));
+	if (rc<0) {
+		printf("error from radio run\n");
+	}
+	return 0;
+}
+
+static int audio_bt() {
+	int off=0;
+	int on=1;
+	int rc;
+
+	rc=io_control(tstats_fd, SET_RADIO_MUTE, &on, sizeof(on));
+	if (rc<0) {
+		printf("error from radio run\n");
+	}
+	rc=io_control(tstats_fd, SET_BT_MUTE, &off, sizeof(off));
+	if (rc<0) {
+		printf("error from bt mute\n");
+	}
+	return 0;
+}
+
 
 
 struct time_buf tbuf;
@@ -633,6 +672,8 @@ static int check_rsense() {
 		return 0;
 	}
 
+	printf("check_rsense: got %d\n", rsense);
+
 	if (rsense) {
 		if (main_state==MAIN_STATE_IGN_ON) {
 			main_state=MAIN_STATE_RADIO_ON;
@@ -642,8 +683,13 @@ static int check_rsense() {
 			}
 			f_view_timer=timer_create(4,f_view_timeout,0);
 			show_clock=0;
-			update_freq();
-			unmute_radio();
+			if (sub_state==SUB_STATE_RADIO) {
+				update_freq();
+				audio_radio();
+			} else {
+				update_vfd();
+				audio_bt();
+			}
 		}
 	} else {
 		if (main_state==MAIN_STATE_RADIO_ON) {
@@ -956,8 +1002,10 @@ static int controls_event(int fd, int event, void *dum) {
 		} else if (b==EVENT_TUNER_PUSH) {
 			if (sub_state==SUB_STATE_RADIO) {
 				sub_state=SUB_STATE_BLUETOOTH;
+				audio_bt();
 			} else {
 				sub_state=SUB_STATE_RADIO;
+				audio_radio();
 			}
 			update_vfd();
 		} else {

@@ -50,6 +50,8 @@ struct tstats_data {
 	struct device_handle *mute_pin_dh;
 	struct device_handle *rsense_pin_dh;
 	struct device_handle *ign_pin_dh;
+	struct device_handle *bt_mute_pin_dh;
+//	struct device_handle *radio_run_pin_dh;
 };
 
 
@@ -269,6 +271,24 @@ static int tstats_control(struct device_handle *dh, int cmd, void *arg, int size
 			return 0;
 			break;
 		}
+		case SET_BT_MUTE: {
+			pindrv->ops->control(
+				tsd->bt_mute_pin_dh,
+				GPIO_SET_PIN,
+				arg, size);
+			return 0;
+			break;
+		}
+		case SET_RADIO_RUN: {
+#if 0
+			pindrv->ops->control(
+				tsd->radio_run_pin_dh,
+				GPIO_SET_PIN,
+				arg, size);
+#endif
+			return 0;
+			break;
+		}
                 case IO_POLL: {
                         unsigned int events=(unsigned int)arg;
                         unsigned int revents=0;
@@ -286,15 +306,21 @@ static int tstats_control(struct device_handle *dh, int cmd, void *arg, int size
         return -1;
 }
 
-static int tstats_update_clk(void *inst,unsigned int hz) {
+static int tstats_update_clk(void *inst, int hz) {
 	struct tstats_data *tsd=(struct tstats_data *)inst;
 	int mute=0;
-	if (hz<84000000) {
+	if (hz<84000000) { // Release mute pins to lower current consumption
 		pindrv->ops->control(
 			tsd->mute_pin_dh,
 			GPIO_SET_PIN,
 			&mute, sizeof(mute));
+
+		pindrv->ops->control(
+			tsd->bt_mute_pin_dh,
+			GPIO_SET_PIN,
+			&mute, sizeof(mute));
 	}
+	return 0;
 }
 
 static int tstats_init(void *inst) {
@@ -308,6 +334,8 @@ static int tstats_start(void *inst) {
 	int rsense_pin	= RSENSE;
 	int mute_pin	= RMUTE;
 	int ign_pin	= IGNITION;
+	int bt_mute_pin	= BT_MUTE;
+//	int radio_run_pin= RADIO_RUN;
 	int rc;
 	int flags;
 
@@ -347,6 +375,20 @@ static int tstats_start(void *inst) {
 		goto out1;
 	}
 
+	tsd->bt_mute_pin_dh=
+		pindrv->ops->open(pindrv->instance,NULL,(void *)tsd);
+	if (!tsd->bt_mute_pin_dh) {
+		goto out1;
+	}
+
+#if 0
+	tsd->radio_run_pin_dh=
+		pindrv->ops->open(pindrv->instance,NULL,(void *)tsd);
+	if (!tsd->radio_run_pin_dh) {
+		goto out1;
+	}
+#endif
+
 	       /* bind pins to driver instances */
         rc=pindrv->ops->control(tsd->stereo_pin_dh,GPIO_BIND_PIN,&stereo_pin,sizeof(stereo_pin));
         if (rc<0) {
@@ -373,6 +415,17 @@ static int tstats_start(void *inst) {
                 goto out1;
         }
 
+        rc=pindrv->ops->control(tsd->bt_mute_pin_dh,GPIO_BIND_PIN,&bt_mute_pin,sizeof(bt_mute_pin));
+        if (rc<0) {
+                goto out1;
+        }
+
+#if 0
+        rc=pindrv->ops->control(tsd->radio_run_pin_dh,GPIO_BIND_PIN,&radio_run_pin,sizeof(radio_run_pin));
+        if (rc<0) {
+                goto out1;
+        }
+#endif
 
 	// Config pins functions //
 
@@ -419,6 +472,21 @@ static int tstats_start(void *inst) {
 //		sys_printf("TSTAT driver: flags update failed\n");
                 goto out1;
         }
+
+
+	rc=pindrv->ops->control(tsd->bt_mute_pin_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+        if (rc<0) {
+//		sys_printf("TSTAT driver: flags update failed\n");
+                goto out1;
+        }
+
+#if 0
+	rc=pindrv->ops->control(tsd->radio_run_pin_dh,GPIO_SET_FLAGS,&flags,sizeof(flags));
+        if (rc<0) {
+//		sys_printf("TSTAT driver: flags update failed\n");
+                goto out1;
+        }
+#endif
 
 out1:
 	return 0;

@@ -64,6 +64,7 @@
 #define DATA_PIN	GPIO_PIN(GPIO_PA,15)	// no irq output
 #define SetScan		GPIO_PIN(GPIO_PA,10)	// irq 10 input
 
-
+#define BT_MUTE		GPIO_PIN(GPIO_PB,2)	// output
+#define RADIO_RUN	GPIO_PIN(GPIO_PB,10)	// output
 // PB2, PB3, PC14 free for irq+input or output
 // PB6, PB10, PB12, PC15 fro input or output, but not irq

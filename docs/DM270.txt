@@ -225,3 +225,8 @@ Pin B2 is pin 16
 pin B3 is pin 32
 pin B10 is pin 17
 pin B12 is pin 21
+
+
+
+B2  -> bt mute
+B10 -> radio override
