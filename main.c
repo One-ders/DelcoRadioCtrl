@@ -509,6 +509,7 @@ static int audio_radio() {
 	int on=1;
 	int rc;
 
+	printf("audio_radio\n");
 	rc=io_control(tstats_fd, SET_BT_MUTE, &on, sizeof(on));
 	if (rc<0) {
 		printf("error from bt mute\n");
@@ -525,6 +526,7 @@ static int audio_bt() {
 	int on=1;
 	int rc;
 
+	printf("audio_bt\n");
 	rc=io_control(tstats_fd, SET_RADIO_MUTE, &on, sizeof(on));
 	if (rc<0) {
 		printf("error from radio run\n");
@@ -861,7 +863,89 @@ static int controls_event(int fd, int event, void *dum) {
 			pshow_clock=show_clock;
 			show_clock=0;
 		}
-		if (b==EVENT_TUNE_UP) {
+
+		if (b==EVENT_SET) {
+			show_clock=pshow_clock;
+			if (!set) {
+				set=1;
+				if (set_timer) {
+					timer_delete(set_timer);
+				}
+				set_timer=timer_create(4,set_timeout,0);
+			} else {
+				set=0;
+				if (set_timer) {
+					timer_delete(set_timer);
+					set_timer=0;
+				}
+			}
+			update_vfd();
+		} else if (b==EVENT_SEEK_UP) {
+//			if (only_clock && set) {
+			if (set) {
+				show_clock=1;
+				if (minutes>=59) {
+					minutes=0;
+				} else {
+					minutes++;
+				}
+				update_vfd();
+				if (set_timer) {
+					timer_delete(set_timer);
+				}
+				set_timer=timer_create(4,set_timeout,0);
+				tbuf.minutes=minutes;
+				io_control(clock_fd, CLOCK_SET_TIME, &tbuf, sizeof(tbuf));
+			} else {
+				if (main_state==MAIN_STATE_RADIO_ON &&
+					sub_state==SUB_STATE_RADIO) {
+					seek_dir=SEEK_DIR_UP;
+					mute_radio();
+					seek_running=1;
+					first=1;
+					timer_set_seek_cb(seek_timeout,0);
+				}
+			}
+		} else if (b==EVENT_SEEK_DOWN) {
+//			if (only_clock && set) {
+			if (set) {
+				show_clock=1;
+				if (hours>=12) {
+					hours=1;
+				} else {
+					hours++;
+				}
+				update_vfd();
+				if (set_timer) {
+					timer_delete(set_timer);
+				}
+				set_timer=timer_create(4,set_timeout,0);
+				tbuf.hours=hours;
+				io_control(clock_fd, CLOCK_SET_TIME, &tbuf, sizeof(tbuf));
+			} else {
+				if (main_state==MAIN_STATE_RADIO_ON &&
+					sub_state==SUB_STATE_RADIO) {
+					seek_dir=SEEK_DIR_DOWN;
+					mute_radio();
+					seek_running=1;
+					first=1;
+					timer_set_seek_cb(seek_timeout,0);
+				}
+			}
+		} else if (main_state!=MAIN_STATE_RADIO_ON) {
+			return 0;
+		} else if (b==EVENT_TUNER_PUSH) {
+			if (sub_state==SUB_STATE_RADIO) {
+				sub_state=SUB_STATE_BLUETOOTH;
+				audio_bt();
+			} else {
+				sub_state=SUB_STATE_RADIO;
+				audio_radio();
+			}
+			update_vfd();
+		} else if (sub_state!=SUB_STATE_RADIO) {
+			return 0;
+		} else if (b==EVENT_TUNE_UP) {
 			if ((active.Mhz>=107) &&
 				(active.Hkhz>=9)) {
 				active.Mhz=87;
@@ -889,22 +973,6 @@ static int controls_event(int fd, int event, void *dum) {
 			}
 			update_freq();
 			printf("wheel --, f=%d.%d\n", active.Mhz, active.Hkhz);
-		} else if (b==EVENT_SET) {
-			show_clock=pshow_clock;
-			if (!set) {
-				set=1;
-				if (set_timer) {
-					timer_delete(set_timer);
-				}
-				set_timer=timer_create(4,set_timeout,0);
-			} else {
-				set=0;
-				if (set_timer) {
-					timer_delete(set_timer);
-					set_timer=0;
-				}
-			}
-			update_vfd();
 		} else if (b==EVENT_P1_PUSH) {
 			push_preset(0);
 		} else if (b==EVENT_P2_PUSH) {
@@ -949,65 +1017,10 @@ static int controls_event(int fd, int event, void *dum) {
 			release_preset(9);
 		} else if (b==EVENT_P11_REL) {
 			release_preset(10);
-		} else if (b==EVENT_SEEK_UP) {
-//			if (only_clock && set) {
-			if (set) {
-				show_clock=1;
-				if (minutes>=59) {
-					minutes=0;
-				} else {
-					minutes++;
-				}
-				update_vfd();
-				if (set_timer) {
-					timer_delete(set_timer);
-				}
-				set_timer=timer_create(4,set_timeout,0);
-				tbuf.minutes=minutes;
-				io_control(clock_fd, CLOCK_SET_TIME, &tbuf, sizeof(tbuf));
-			} else {
-				seek_dir=SEEK_DIR_UP;
-				mute_radio();
-				seek_running=1;
-				first=1;
-				timer_set_seek_cb(seek_timeout,0);
-			}
-		} else if (b==EVENT_SEEK_DOWN) {
-//			if (only_clock && set) {
-			if (set) {
-				show_clock=1;
-				if (hours>=12) {
-					hours=1;
-				} else {
-					hours++;
-				}
-				update_vfd();
-				if (set_timer) {
-					timer_delete(set_timer);
-				}
-				set_timer=timer_create(4,set_timeout,0);
-				tbuf.hours=hours;
-				io_control(clock_fd, CLOCK_SET_TIME, &tbuf, sizeof(tbuf));
-			} else {
-				seek_dir=SEEK_DIR_DOWN;
-				mute_radio();
-				seek_running=1;
-				first=1;
-				timer_set_seek_cb(seek_timeout,0);
-			}
 		} else if (b==EVENT_VOL_PUSH) {
 			if (main_state==MAIN_STATE_RADIO_ON) {
 				toggle_radio_display(pshow_clock);
 			}
-		} else if (b==EVENT_TUNER_PUSH) {
-			if (sub_state==SUB_STATE_RADIO) {
-				sub_state=SUB_STATE_BLUETOOTH;
-				audio_bt();
-			} else {
-				sub_state=SUB_STATE_RADIO;
-				audio_radio();
-			}
-			update_vfd();
 		} else {
 			printf("bad event val is %d\n", b);
 		}

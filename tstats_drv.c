@@ -310,6 +310,7 @@ static int tstats_update_clk(void *inst, int hz) {
 	struct tstats_data *tsd=(struct tstats_data *)inst;
 	int mute=0;
 	if (hz<84000000) { // Release mute pins to lower current consumption
+		sys_printf("update_clk: unmute bt and audio\n");
 		pindrv->ops->control(
 			tsd->mute_pin_dh,
 			GPIO_SET_PIN,
