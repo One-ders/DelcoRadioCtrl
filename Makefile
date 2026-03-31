@@ -1,7 +1,7 @@
 
 #KREL=../../krel
-KREL=../lpScheduler/boards/BLACKPILL
-#KREL=../RTScheduler-Discovery/boards/BLACKPILL
+#KREL=../lpScheduler/boards/BLACKPILL
+KREL=RTScheduler-Discovery/boards/BLACKPILL
 
 
 
